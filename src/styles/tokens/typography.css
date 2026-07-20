@@ -1,0 +1,54 @@
+/* ============================================================
+   NGG · Typography tokens
+   One geometric sans (Heebo) carries Hebrew + Latin. The brand
+   reads heavy at display sizes (800/900) and clean at text sizes
+   (400/500). Hebrew is the primary script → RTL-friendly leading,
+   no letter-spacing on Hebrew runs.
+   ============================================================ */
+
+:root {
+  /* ---- Families ---- */
+  --font-sans: "Heebo", "Assistant", system-ui, -apple-system, "Segoe UI", "Arial Hebrew", Arial, sans-serif;
+  --font-display: "Heebo", "Assistant", system-ui, -apple-system, "Segoe UI", "Arial Hebrew", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ---- Weights ---- */
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+  --weight-black: 900;
+
+  /* ---- Type scale (16px base) ---- */
+  --text-2xs:  0.6875rem;  /* 11 */
+  --text-xs:   0.75rem;    /* 12 */
+  --text-sm:   0.875rem;   /* 14 */
+  --text-base: 1rem;       /* 16 */
+  --text-md:   1.125rem;   /* 18 */
+  --text-lg:   1.25rem;    /* 20 */
+  --text-xl:   1.5rem;     /* 24 */
+  --text-2xl:  1.875rem;   /* 30 */
+  --text-3xl:  2.25rem;    /* 36 */
+  --text-4xl:  3rem;       /* 48 */
+  --text-5xl:  3.75rem;    /* 60 */
+  --text-6xl:  4.5rem;     /* 72 */
+  --text-7xl:  6rem;       /* 96 */
+  --text-8xl:  7.5rem;     /* 120 */
+
+  /* ---- Line heights ---- */
+  --leading-none: 1;
+  --leading-tight: 1.1;     /* display */
+  --leading-snug: 1.25;     /* headings */
+  --leading-normal: 1.5;    /* UI text */
+  --leading-relaxed: 1.7;   /* long-form Hebrew body */
+
+  /* ---- Tracking (Latin only; keep ~0 on Hebrew) ---- */
+  --tracking-tighter: -0.02em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.12em;   /* eyebrow / section labels (Latin) */
+  --tracking-widest: 0.22em;
+}

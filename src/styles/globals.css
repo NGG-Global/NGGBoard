@@ -1,0 +1,98 @@
+/* NGG design tokens first so their :root variables are available everywhere. */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/radius.css";
+@import "./tokens/elevation.css";
+@import "./tokens/motion.css";
+@import "./tokens/base.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* base.css already provides the brand reset; re-assert a couple of essentials
+   that Tailwind's preflight would otherwise override. */
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    color: var(--text);
+    background: var(--surface-sunken);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: var(--weight-extrabold);
+    line-height: var(--leading-tight);
+  }
+}
+
+/* ---- Shared keyframes (mirrors the design mockups) ---- */
+@keyframes ngg-pulse-dot {
+  0%   { box-shadow: 0 0 0 0 rgba(236, 42, 140, 0.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(236, 42, 140, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(236, 42, 140, 0); }
+}
+@keyframes ngg-pulse-dot-light {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+@keyframes ngg-card-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ngg-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ngg-toast-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes ngg-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ngg-pulse-dot { animation: ngg-pulse-dot 1.8s ease-out infinite; }
+.ngg-pulse-dot-light { animation: ngg-pulse-dot-light 1.6s ease-out infinite; }
+.ngg-card-in { animation: ngg-card-in 0.5s cubic-bezier(0.2, 0.7, 0.3, 1); }
+.ngg-fade-up { animation: ngg-fade-up 0.35s var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ngg-pulse-dot, .ngg-pulse-dot-light, .ngg-card-in, .ngg-fade-up { animation: none !important; }
+}
+
+/* Board detail: stack the two columns on narrow screens */
+@media (max-width: 860px) {
+  .ngg-detail-grid { grid-template-columns: 1fr !important; }
+}
+
+/* Utility: hide scrollbars on projector display */
+.ngg-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.ngg-no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ---- Button hover/active states (inline styles can't express :hover) ---- */
+.ngg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ngg-btn--primary:not(:disabled):hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
+.ngg-btn--primary:not(:disabled):active { background: var(--accent-active) !important; }
+.ngg-btn--danger:not(:disabled):hover { background: var(--danger) !important; filter: brightness(0.92); }
+.ngg-btn--secondary:not(:disabled):hover { background: var(--surface-hover) !important; border-color: var(--border-strong) !important; }
+.ngg-btn--outline:not(:disabled):hover { background: var(--accent-soft) !important; }
+.ngg-btn--ghost:not(:disabled):hover { background: var(--surface-hover) !important; color: var(--text) !important; }
+
+/* Form control focus ring */
+.ngg-focusable:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Generic interactive surface hover used by cards / list rows / menu items */
+.ngg-hover:hover { background: var(--surface-hover); }
+.ngg-danger-hover:hover { background: var(--danger-bg) !important; color: var(--danger) !important; }
+.ngg-card-hover { transition: var(--transition-colors), transform var(--dur) var(--ease-out); }
+.ngg-card-hover:hover { border-color: var(--border-strong) !important; }
+
+/* Screen-reader-only helper */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

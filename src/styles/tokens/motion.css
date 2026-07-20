@@ -1,0 +1,34 @@
+/* ============================================================
+   NGG · Motion
+   Sharp, structured brand → snappy, precise, no bounce.
+   Movement is mostly fades + small confident rises/wipes.
+   ============================================================ */
+:root {
+  --dur-instant: 80ms;  /* @kind other */
+  --dur-fast: 140ms;    /* @kind other */
+  --dur: 220ms;         /* @kind other */
+  --dur-slow: 360ms;    /* @kind other */
+  --dur-slower: 600ms;  /* @kind other */
+
+  --ease-standard: cubic-bezier(.2, .6, .2, 1);   /* @kind other */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);         /* @kind other */
+  --ease-in: cubic-bezier(.5, 0, .9, .3);          /* @kind other */
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);     /* @kind other */
+  --ease-linear: linear;                           /* @kind other */
+
+  --transition-colors: color var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard); /* @kind other */
+  --transition-transform: transform var(--dur) var(--ease-out); /* @kind other */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms; /* @kind other */
+    --dur-fast: 0ms; /* @kind other */
+    --dur: 0ms; /* @kind other */
+    --dur-slow: 0ms; /* @kind other */
+    --dur-slower: 0ms; /* @kind other */
+  }
+}

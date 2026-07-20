@@ -1,0 +1,91 @@
+// ============================================================================
+// Supabase adapter template
+//
+// Rename to `supabase-client.ts`, `npm i @supabase/supabase-js`, and implement
+// the same method surface as `LocalDB` (src/lib/data/local-db.ts). Then have
+// `src/lib/data/index.ts` export whichever backend NEXT_PUBLIC_DATA_BACKEND
+// selects. UI code imports `db` from that index and needs no other change.
+//
+// Only the transport differs — the method names, arguments, and return shapes
+// are identical to LocalDB, so screens keep working unchanged.
+// ============================================================================
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Board, LiveRoom, Submission } from "@/lib/types";
+import type { RealtimeScope, RealtimeSignal } from "./realtime";
+
+const supabase: SupabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+);
+
+export class SupabaseDB {
+  // ---- realtime: map scopes to Postgres change channels --------------------
+  subscribe(scope: RealtimeScope, cb: (s: RealtimeSignal) => void): () => void {
+    const roomId = scope === "board-list" ? null : scope.room;
+    const channel = supabase
+      .channel(roomId ? `room:${roomId}` : "boards")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "submissions", filter: roomId ? `room_id=eq.${roomId}` : undefined },
+        () => cb({ kind: "submissions", roomId: roomId ?? undefined, at: Date.now() }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "live_rooms", filter: roomId ? `id=eq.${roomId}` : undefined },
+        () => cb({ kind: "room", roomId: roomId ?? undefined, at: Date.now() }),
+      )
+      .subscribe();
+    return () => void supabase.removeChannel(channel);
+  }
+
+  // ---- boards (authenticated, RLS-scoped to the caller's org) ---------------
+  async listBoards(): Promise<Board[]> {
+    const { data } = await supabase.from("boards").select("*").order("updated_at", { ascending: false });
+    return (data ?? []) as Board[];
+  }
+
+  async createBoard(input: Partial<Board>): Promise<Board> {
+    const { data, error } = await supabase.from("boards").insert(input).select().single();
+    if (error) throw error;
+    return data as Board;
+  }
+
+  // ---- participant writes go through the SECURITY DEFINER RPCs --------------
+  async joinRoom(publicId: string, displayName: string | null) {
+    const { data, error } = await supabase.rpc("join_room", {
+      p_public_id: publicId,
+      p_display_name: displayName,
+    });
+    if (error) throw error;
+    return data; // session id
+  }
+
+  async createSubmission(input: {
+    publicId: string;
+    sessionId: string;
+    type: Submission["type"];
+    text?: string | null;
+    mediaUrl?: string | null;
+    anonymous?: boolean;
+    displayName?: string | null;
+  }) {
+    const { data, error } = await supabase.rpc("create_submission", {
+      p_public_id: input.publicId,
+      p_session_id: input.sessionId,
+      p_type: input.type,
+      p_text: input.text ?? null,
+      p_media_url: input.mediaUrl ?? null,
+      p_anonymous: input.anonymous ?? false,
+      p_display_name: input.displayName ?? null,
+    });
+    if (error) throw error;
+    return data; // submission id
+  }
+
+  // ...implement the remaining LocalDB methods (getRoomByPublicId, setLayout,
+  //    setFocus, moderate, getSessionSummaries, …) with equivalent queries.
+}
+
+// Public reads for participants should use the `public_board_view`, e.g.:
+//   supabase.from("public_board_view").select("*").eq("public_id", publicId).single();

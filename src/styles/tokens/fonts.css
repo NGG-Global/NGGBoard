@@ -1,0 +1,15 @@
+/* ============================================================
+   NGG · Fonts
+   Brand face: Heebo — a geometric Hebrew + Latin sans (Google Fonts).
+   ── SUBSTITUTION NOTE ───────────────────────────────────────
+   The licensed brand font files the user uploaded could not be
+   read (the archive was too large to process in-tool). Heebo is
+   the closest free match: geometric, even-stroke, full Hebrew +
+   Latin coverage, weights 100–900 (the 800/900 blacks match the
+   heavy display weight seen in NGG's newsletter/event artwork).
+   To ship the real brand font, drop individual .woff2 files into
+   assets/fonts/ and replace the @import below with @font-face
+   rules pointing at them.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');

@@ -1,0 +1,39 @@
+/* ============================================================
+   NGG · Elevation & effects
+   Light theme: soft neutral shadows (cool blue-black base so
+   shadows read as the brand ink, not muddy gray).
+   Magenta glow is reserved for accent / dark-surface emphasis.
+   ============================================================ */
+:root {
+  --shadow-xs: 0 1px 2px rgba(8,8,16,.06);
+  --shadow-sm: 0 1px 2px rgba(8,8,16,.06), 0 1px 3px rgba(8,8,16,.08);
+  --shadow-md: 0 2px 4px rgba(8,8,16,.06), 0 6px 16px rgba(8,8,16,.10);
+  --shadow-lg: 0 8px 24px rgba(8,8,16,.12), 0 2px 6px rgba(8,8,16,.08);
+  --shadow-xl: 0 24px 60px rgba(8,8,16,.18), 0 8px 20px rgba(8,8,16,.10);
+  --shadow-inner: inset 0 1px 2px rgba(8,8,16,.08);
+
+  /* Brand glows */
+  --glow-magenta-sm: 0 0 0 1px rgba(236,42,140,.35), 0 4px 18px rgba(236,42,140,.30);
+  --glow-magenta: 0 6px 30px rgba(236,42,140,.42), 0 2px 10px rgba(236,42,140,.30);
+  --glow-magenta-lg: 0 10px 50px rgba(250,33,141,.55);
+
+  /* Focus ring (use with outline or box-shadow) */
+  --ring: 0 0 0 3px var(--focus-ring);
+
+  /* Hairline + metallic edge highlight */
+  --edge-metallic: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(8,8,16,.12); /* @kind shadow */
+
+  /* Backdrop blur strengths */
+  --blur-sm: 6px;  /* @kind other */
+  --blur-md: 14px; /* @kind other */
+  --blur-lg: 28px; /* @kind other */
+}
+
+[data-theme="dark"], .theme-dark {
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.5);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.55);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.6);
+  --shadow-xl: 0 28px 64px rgba(0,0,0,.7);
+  --edge-metallic: inset 0 1px 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(0,0,0,.4); /* @kind shadow */
+}
