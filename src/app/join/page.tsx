@@ -4,26 +4,34 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { db } from "@/lib/data";
-import { Button } from "@/components/ui";
+import { Button, Spinner } from "@/components/ui";
 
 export default function JoinByCodePage() {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const clean = code.replace(/\D/g, "");
     if (clean.length !== 6) {
       setError("קוד החדר מורכב מ-6 ספרות");
       return;
     }
-    const room = db.findRoomByCode(clean);
-    if (!room) {
-      setError("לא נמצא חדר עם הקוד הזה. בדקו שוב עם המנחה.");
-      return;
+    setError(null);
+    setChecking(true);
+    // The lookup may be async (Supabase); poll a few times before giving up.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const room = db.findRoomByCode(clean);
+      if (room) {
+        router.push(`/join/${room.public_id}`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 450));
     }
-    router.push(`/join/${room.public_id}`);
+    setChecking(false);
+    setError("לא נמצא חדר עם הקוד הזה. בדקו שוב עם המנחה.");
   }
 
   return (
@@ -46,7 +54,9 @@ export default function JoinByCodePage() {
           style={{ fontSize: "var(--text-4xl)", fontWeight: "var(--weight-black)", letterSpacing: ".2em", textAlign: "center", border: `1px solid ${error ? "var(--danger)" : "var(--border-strong)"}`, borderRadius: "var(--radius-xl)", padding: "16px", background: "var(--surface)", color: "var(--text)", outline: "none" }}
         />
         {error && <span style={{ color: "var(--danger)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", textAlign: "center" }}>{error}</span>}
-        <Button type="submit" variant="primary" size="lg" block>הצטרפו</Button>
+        <Button type="submit" variant="primary" size="lg" block disabled={checking}>
+          {checking ? <Spinner size={18} color="#fff" /> : "הצטרפו"}
+        </Button>
       </form>
     </div>
   );

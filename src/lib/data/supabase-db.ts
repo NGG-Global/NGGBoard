@@ -54,6 +54,23 @@ class SupabaseDB {
   private emit(kind: RealtimeSignal["kind"], roomId?: string) {
     realtime.publish({ kind, roomId });
   }
+  /**
+   * Emit a room/submission signal keyed by BOTH the internal room id and its
+   * public id. Participant/display pages subscribe by public id while the
+   * control room subscribes by internal id — emitting both reaches all of them.
+   */
+  private signalRoom(kind: RealtimeSignal["kind"], idOrPublicId?: string) {
+    if (!idOrPublicId) {
+      this.emit(kind);
+      return;
+    }
+    const room = this.cache.rooms.find((r) => r.id === idOrPublicId || r.public_id === idOrPublicId);
+    this.emit(kind, idOrPublicId);
+    if (room) {
+      if (room.id !== idOrPublicId) this.emit(kind, room.id);
+      if (room.public_id && room.public_id !== idOrPublicId) this.emit(kind, room.public_id);
+    }
+  }
 
   setCurrentProfile(id: string | null) {
     this.currentProfileId = id;
@@ -76,39 +93,67 @@ class SupabaseDB {
     this.emit("board-list");
   }
 
-  /** Load a room (+ board, submissions, participants) and subscribe to it. */
+  /**
+   * Load a room (+ board, submissions, participants) and subscribe to it.
+   *
+   * A freshly-activated room may take a few hundred ms to land in Supabase, so
+   * we retry a handful of times before giving up — and we only guard against
+   * *concurrent* lookups (clearing the flag in `finally`), never permanently
+   * caching a "not found", so the page recovers on its own once the room lands.
+   */
   private async ensureRoomByPublicId(publicId: string) {
     const key = `pub:${publicId}`;
-    if (this.loadingRooms.has(key)) return;
+    if (this.loadingRooms.has(key) || this.cache.rooms.some((r) => r.public_id === publicId)) return;
     this.loadingRooms.add(key);
     const sb = getSupabase();
-    if (!sb) return;
-
-    // Authenticated path: direct table read (org-scoped by RLS).
-    if (this.currentProfileId) {
-      const { data: room } = await sb.from("live_rooms").select("*").eq("public_id", publicId).maybeSingle();
-      if (room) return this.loadRoomGraph(room as LiveRoom);
+    if (!sb) {
+      this.loadingRooms.delete(key);
+      return;
     }
-    // Anonymous path: the participant-safe view synthesises Board + Room.
-    const { data: view } = await sb
-      .from("public_board_view")
-      .select("*")
-      .eq("public_id", publicId)
-      .maybeSingle();
-    if (view) this.absorbPublicView(view as PublicViewRow);
-    const target = this.cache.rooms.find((r) => r.public_id === publicId);
-    if (target) await this.loadSubmissions(target.id, false);
-    this.subscribePublic(publicId);
-    this.emit("room", target?.id);
+    try {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        // Authenticated path: direct table read (org-scoped by RLS).
+        if (this.currentProfileId) {
+          const { data: room } = await sb.from("live_rooms").select("*").eq("public_id", publicId).maybeSingle();
+          if (room) return void (await this.loadRoomGraph(room as LiveRoom));
+        }
+        // Anonymous path: the participant-safe view synthesises Board + Room.
+        const { data: view } = await sb.from("public_board_view").select("*").eq("public_id", publicId).maybeSingle();
+        if (view) {
+          this.absorbPublicView(view as PublicViewRow);
+          const target = this.cache.rooms.find((r) => r.public_id === publicId);
+          if (target) await this.loadSubmissions(target.id, false);
+          this.subscribePublic(publicId);
+          this.signalRoom("room", target?.id);
+          return;
+        }
+        await delay(500 + attempt * 400);
+      }
+      // Give up for now; emit so the UI can show a "not found" state.
+      this.emit("room");
+    } finally {
+      this.loadingRooms.delete(key);
+    }
   }
 
   private async ensureRoomById(roomId: string) {
     if (this.loadingRooms.has(roomId) || this.cache.rooms.some((r) => r.id === roomId)) return;
     this.loadingRooms.add(roomId);
     const sb = getSupabase();
-    if (!sb) return;
-    const { data: room } = await sb.from("live_rooms").select("*").eq("id", roomId).maybeSingle();
-    if (room) await this.loadRoomGraph(room as LiveRoom);
+    if (!sb) {
+      this.loadingRooms.delete(roomId);
+      return;
+    }
+    try {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const { data: room } = await sb.from("live_rooms").select("*").eq("id", roomId).maybeSingle();
+        if (room) return void (await this.loadRoomGraph(room as LiveRoom));
+        await delay(500 + attempt * 400);
+      }
+      this.emit("room");
+    } finally {
+      this.loadingRooms.delete(roomId);
+    }
   }
 
   private async loadRoomGraph(room: LiveRoom) {
@@ -120,7 +165,7 @@ class SupabaseDB {
     }
     await this.loadSubmissions(room.id, true);
     this.subscribeRoom(room.id);
-    this.emit("room", room.id);
+    this.signalRoom("room", room.id);
   }
 
   private async loadSubmissions(roomId: string, all: boolean) {
@@ -131,7 +176,7 @@ class SupabaseDB {
     const { data } = await q;
     if (data) {
       this.cache.submissions = this.cache.submissions.filter((s) => s.room_id !== roomId).concat(data as Submission[]);
-      this.emit("submissions", roomId);
+      this.signalRoom("submissions", roomId);
     }
   }
 
@@ -194,7 +239,7 @@ class SupabaseDB {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `id=eq.${roomId}` }, (p) => {
         if (p.new) this.upsert(this.cache.rooms, p.new as LiveRoom);
-        this.emit("room", roomId);
+        this.signalRoom("room", roomId);
       })
       .subscribe();
     this.channels.set(roomId, ch);
@@ -214,7 +259,7 @@ class SupabaseDB {
       .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `public_id=eq.${publicId}` }, async () => {
         const { data } = await sb.from("public_board_view").select("*").eq("public_id", publicId).maybeSingle();
         if (data) this.absorbPublicView(data as PublicViewRow);
-        this.emit("room", room.id);
+        this.signalRoom("room", room.id);
       })
       .subscribe();
     this.channels.set(publicId, ch);
@@ -229,6 +274,11 @@ class SupabaseDB {
   // ---- org / profiles -------------------------------------------------------
   getOrganization() {
     return this.cache.organizations[0] ?? { id: "public", name: "נירם גיתן — NGG", logo_url: "/brand/ngg-logo.png", created_at: new Date().toISOString() };
+  }
+  /** Org id for writes — prefer the signed-in profile's org (RLS uses this). */
+  private currentOrgId(): string {
+    const p = this.currentProfileId ? this.getProfile(this.currentProfileId) : null;
+    return p?.organization_id ?? this.cache.organizations[0]?.id ?? "public";
   }
   getProfile(id: string) {
     return this.cache.profiles.find((p) => p.id === id) ?? null;
@@ -253,7 +303,7 @@ class SupabaseDB {
     const nowIso = new Date().toISOString();
     const board: Board = {
       id: uuid(),
-      organization_id: this.getOrganization().id,
+      organization_id: this.currentOrgId(),
       created_by: this.currentProfileId ?? "public",
       internal_name: input.internal_name ?? "",
       public_title: input.public_title ?? "",
@@ -376,7 +426,7 @@ class SupabaseDB {
     const room: LiveRoom = {
       id: uuid(),
       board_id: boardId,
-      organization_id: this.getOrganization().id,
+      organization_id: this.currentOrgId(),
       public_id: `r-${randomId(10)}`,
       room_code: generateRoomCode(),
       session_label: opts.sessionLabel?.trim() || null,
@@ -408,7 +458,7 @@ class SupabaseDB {
     const idx = this.cache.rooms.findIndex((r) => r.id === id);
     const next = { ...(this.cache.rooms[idx] as LiveRoom), ...patch };
     if (idx !== -1) this.cache.rooms[idx] = next;
-    this.emit(kind, id);
+    this.signalRoom(kind, id);
     const sb = getSupabase();
     void sb?.from("live_rooms").update(patch).eq("id", id).then(({ error }) => error && console.warn("patchRoom", error.message));
     return next;
@@ -450,7 +500,7 @@ class SupabaseDB {
     };
     this.cache.participants.push(session);
     const updated = this.patchRoomLocal(room.id, { participant_count: room.participant_count + 1 });
-    this.emit("participants", room.id);
+    this.signalRoom("participants", room.id);
     const sb = getSupabase();
     void sb?.rpc("join_room", { p_public_id: publicId, p_display_name: session.display_name, p_session_id: sessionId })
       .then(({ error }) => error && console.warn("join_room", error.message));
@@ -509,7 +559,7 @@ class SupabaseDB {
       updated_at: nowIso,
     };
     this.cache.submissions.push(submission);
-    this.emit("submissions", input.roomId);
+    this.signalRoom("submissions", input.roomId);
     const sb = getSupabase();
     if (sb && room) {
       void sb.rpc("create_submission", {
@@ -553,7 +603,7 @@ class SupabaseDB {
       const room = this.cache.rooms.find((r) => r.id === sub.room_id);
       if (room?.focused_submission_id === sub.id) this.setFocus(room.id, null);
     }
-    this.emit("submissions", sub.room_id);
+    this.signalRoom("submissions", sub.room_id);
     const sb = getSupabase();
     void sb?.from("submissions").update(patch).eq("id", sub.id).then(({ error }) => error && console.warn("moderate", error.message));
     return next;
@@ -588,6 +638,8 @@ class SupabaseDB {
 
 // ---- helpers ----------------------------------------------------------------
 const ACTIVE_STATES = ["active", "paused", "read_only", "suspended"];
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface PublicViewRow {
   public_id: string;

@@ -31,6 +31,13 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
+  // Grace window: give the room a few seconds to load (a just-activated room
+  // takes a moment to reach Supabase) before showing "not found".
+  const [graceOver, setGraceOver] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setGraceOver(true), 6000);
+    return () => clearTimeout(t);
+  }, [publicId]);
 
   // Restore an existing participant session (survives refresh).
   useEffect(() => {
@@ -60,6 +67,17 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   if (!mounted) return <Centered><Spinner size={28} /></Centered>;
 
   if (!room || !board) {
+    // Still within the grace window → show a connecting state, not an error.
+    if (!graceOver) {
+      return (
+        <ParticipantShell board={null}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "56px 12px", color: "var(--text-muted)" }}>
+            <Spinner size={28} />
+            <div style={{ fontSize: "var(--text-sm)" }}>מתחבר למפגש…</div>
+          </div>
+        </ParticipantShell>
+      );
+    }
     return (
       <ParticipantShell board={null}>
         <StateCard icon={<IconWarning size={40} />} title="החדר לא נמצא" description="בדקו את הקוד או הקישור ונסו שוב. ייתכן שהמפגש טרם התחיל או שהסתיים." />

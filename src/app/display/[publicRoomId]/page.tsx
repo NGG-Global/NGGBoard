@@ -21,11 +21,14 @@ export default function DisplayPage({ params }: { params: Promise<{ publicRoomId
     room ? db.listSubmissions(room.id).filter((s) => s.status === "published") : [],
   );
 
+  const [graceOver, setGraceOver] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined") setJoinUrl(`${window.location.origin}/join/${publicRoomId}`);
+    const t = setTimeout(() => setGraceOver(true), 6000);
+    return () => clearTimeout(t);
   }, [publicRoomId]);
 
-  if (!mounted) {
+  if (!mounted || (!room && !graceOver)) {
     return (
       <div style={{ height: "100vh", display: "grid", placeItems: "center", background: "var(--ink-950)" }}>
         <Spinner size={32} color="#fff" />
