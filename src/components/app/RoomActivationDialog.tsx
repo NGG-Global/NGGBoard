@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Board } from "@/lib/types";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { Button, Input, Modal, Radio } from "@/components/ui";
 
 export function RoomActivationDialog({

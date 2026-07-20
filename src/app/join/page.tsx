@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { Button } from "@/components/ui";
 
 export default function JoinByCodePage() {

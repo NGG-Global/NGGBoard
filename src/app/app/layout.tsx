@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getSessionUserId } from "@/lib/auth";
+import { resolveSession } from "@/lib/auth";
 import { Spinner } from "@/components/ui";
 
 /** Client-side auth guard. Redirects unauthenticated users to /login. */
@@ -11,11 +11,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (!getSessionUserId()) {
-      router.replace("/login");
-    } else {
-      setChecked(true);
-    }
+    let active = true;
+    resolveSession().then((id) => {
+      if (!active) return;
+      if (!id) router.replace("/login");
+      else setChecked(true);
+    });
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   if (!checked) {

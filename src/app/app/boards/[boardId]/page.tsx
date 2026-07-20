@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
-import { db, CURRENT_USER_ID } from "@/lib/data/local-db";
+import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
 import { THEME_VISUALS } from "@/lib/board-visuals";

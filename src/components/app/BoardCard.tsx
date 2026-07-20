@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Board } from "@/lib/types";
-import { db, CURRENT_USER_ID } from "@/lib/data/local-db";
+import { db, CURRENT_USER_ID } from "@/lib/data";
 import { formatAgo } from "@/lib/utils";
 import { BoardStatusBadge, Badge, useToast } from "@/components/ui";
 import { BoardThumbnail } from "./BoardThumbnail";

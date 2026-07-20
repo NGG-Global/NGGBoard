@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { getCurrentProfile } from "@/lib/auth";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { AppShell } from "@/components/app/AppShell";
@@ -23,14 +23,17 @@ export default function AdminPage() {
   const profiles = useLiveQuery("board-list", () => db.listProfiles());
   const boards = useLiveQuery("board-list", () => db.listBoards());
   const activeRooms = useLiveQuery("board-list", () => db.listActiveRooms());
+  // Reactive so it settles after the profile hydrates (Supabase).
+  const profile = useLiveQuery("board-list", () => (mounted ? getCurrentProfile() : null));
 
-  // Guard: only org admins.
+  // Guard: redirect only once a non-admin profile is known (avoids a flash
+  // redirect while the profile is still hydrating).
   useEffect(() => {
-    if (mounted && getCurrentProfile()?.role !== "org_admin") router.replace("/app/boards");
-  }, [mounted, router]);
+    if (mounted && profile && profile.role !== "org_admin") router.replace("/app/boards");
+  }, [mounted, profile, router]);
 
   if (!mounted) return null;
-  if (getCurrentProfile()?.role !== "org_admin") {
+  if (profile && profile.role !== "org_admin") {
     return (
       <AppShell current="admin">
         <div style={{ padding: 40, maxWidth: 640, margin: "0 auto" }}>

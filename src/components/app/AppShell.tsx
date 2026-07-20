@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { getCurrentProfile, signOut } from "@/lib/auth";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import {
   IconArchive,
   IconGrid,
@@ -29,7 +29,8 @@ const NAV: { key: DashView; label: string; href: string; icon: React.ReactNode }
 export function AppShell({ current, children }: { current: DashView; children: React.ReactNode }) {
   const router = useRouter();
   const mounted = useMounted();
-  const profile = mounted ? getCurrentProfile() : null;
+  // Reactive: re-reads once the profile hydrates (Supabase) or on any change.
+  const profile = useLiveQuery("board-list", () => (mounted ? getCurrentProfile() : null));
   const activeCount = useLiveQuery("board-list", () => db.listActiveRooms().length);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -196,8 +197,7 @@ export function AppShell({ current, children }: { current: DashView; children: R
               >
                 <button
                   onClick={() => {
-                    signOut();
-                    router.replace("/login");
+                    void signOut().then(() => router.replace("/login"));
                   }}
                   className="ngg-hover"
                   style={{

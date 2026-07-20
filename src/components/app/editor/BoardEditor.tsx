@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import type { Board, BackgroundTheme, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { THEME_VISUALS } from "@/lib/board-visuals";
 import { boardFormSchema } from "@/lib/validation";
 import { Button, Input, Radio, Switch, useToast } from "@/components/ui";

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useMemo, useState } from "react";
 import type { DisplayLayout, LiveRoom, Submission, SubmissionStatus } from "@/lib/types";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { useLiveQuery, useMounted, useTicker } from "@/lib/hooks";
 import { useInactivityMonitor } from "@/lib/useInactivity";
 import { formatAgo, formatRoomCode, minutesBetween } from "@/lib/utils";

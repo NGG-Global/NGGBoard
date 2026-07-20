@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import type { Board } from "@/lib/types";
-import { db, CURRENT_USER_ID } from "@/lib/data/local-db";
+import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
 import { AppShell, type DashView } from "@/components/app/AppShell";

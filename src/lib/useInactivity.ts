@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { INACTIVITY_SUSPEND_MS, INACTIVITY_WARNING_MS } from "@/lib/constants";
 import type { LiveRoom } from "@/lib/types";
 

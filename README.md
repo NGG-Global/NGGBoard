@@ -130,8 +130,27 @@ src/lib/data/realtime.ts        ← BroadcastChannel realtime bus
 
 ## Hooking up Supabase for realtime
 
-The app is architected so this is an isolated swap — screens don't change. Follow
-these steps.
+> **Status for the connected project (`ljrnmcpnbduuzjjnmdpw`):** the client,
+> the cache-backed realtime adapter (`src/lib/data/supabase-db.ts`), the backend
+> selector, and real Supabase Auth are all implemented and wired. `.env.local`
+> points at the project with `NEXT_PUBLIC_DATA_BACKEND=supabase`. Verified live:
+> the schema/RLS/`public_board_view` are in place, anonymous REST reads work
+> from the browser, and the Realtime channel subscribes. **Remaining actions
+> (yours):**
+> 1. Run `supabase/migrations/0004_client_ids.sql` — **required**; the
+>    participant-write RPCs the adapter calls (`join_room`/`create_submission`
+>    with client-generated ids) don't exist until you do.
+> 2. Run `supabase/migrations/0005_auth_bootstrap.sql` — so a signup is
+>    auto-provisioned with an organization + profile.
+> 3. Confirm `submissions` and `live_rooms` are in the `supabase_realtime`
+>    publication (step 2 below).
+> 4. Email confirmation is currently **on**, so a new signup must confirm its
+>    email before first login (or enable auto-confirm under Auth → settings for
+>    smoother onboarding). This is why the authenticated facilitator flow can't
+>    be exercised headlessly and needs a real confirmed user.
+
+The app is architected so this is an isolated swap — screens don't change. The
+full step-by-step, for reference / a fresh project:
 
 ### 1. Create the Supabase project & apply the schema
 
@@ -194,29 +213,22 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server-only
 NEXT_PUBLIC_APP_URL=https://boards.yourdomain.com
 ```
 
-### 6. Implement the Supabase data client
+### 6. The Supabase data client (already implemented)
 
-1. `npm i @supabase/supabase-js`
-2. Rename `src/lib/data/supabase-client.ts.example` → `supabase-client.ts` and
-   implement the remaining methods (the template already covers realtime
-   subscriptions, board reads/writes, and the participant RPCs — the method
-   names, arguments, and return shapes match `LocalDB` exactly).
-3. Add `src/lib/data/index.ts` that exports the right backend:
+This is done in `src/lib/data/supabase-db.ts` and selected by
+`src/lib/data/index.ts` (`@supabase/supabase-js` is installed). It keeps the
+app's **synchronous read API** by serving reads from an in-memory cache that:
 
-   ```ts
-   import { db as localDb } from "./local-db";
-   // import { SupabaseDB } from "./supabase-client";
-   export const db =
-     process.env.NEXT_PUBLIC_DATA_BACKEND === "supabase"
-       ? /* new SupabaseDB() */ localDb
-       : localDb;
-   ```
+- hydrates the org's boards/profiles after login and lazily loads a room graph
+  (room → board → submissions) on first access;
+- stays live via Supabase Realtime (`postgres_changes` on `submissions` and
+  `live_rooms`), re-emitting the app's internal realtime signal so
+  `useLiveQuery` re-renders;
+- does **optimistic writes** with client-generated UUIDs (which is why the RPCs
+  in `0004` accept an id) and reconciles when the authoritative row arrives.
 
-   Then update imports from `@/lib/data/local-db` to `@/lib/data`. Because the
-   surface is identical, no screen needs changing. (Async note: `LocalDB`
-   methods are synchronous; the Supabase versions return promises — wrap reads
-   in the existing `useLiveQuery` with `await`, or keep an optimistic local
-   cache and reconcile on the realtime signal.)
+No screen changed — every component imports `db` from `@/lib/data`.
+`src/lib/data/supabase-client.ts.example` remains as an annotated reference.
 
 ### 7. Schedule the inactivity sweep
 

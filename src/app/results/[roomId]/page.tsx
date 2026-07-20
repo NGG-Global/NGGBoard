@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { use, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { minutesBetween } from "@/lib/utils";
 import { themeVisual } from "@/lib/board-visuals";

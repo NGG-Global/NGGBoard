@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { Board, LiveRoom, ParticipantSession } from "@/lib/types";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { SUBMISSION_RATE_LIMIT_MS } from "@/lib/constants";
 import { findBlockedWord, sanitizeText } from "@/lib/utils";

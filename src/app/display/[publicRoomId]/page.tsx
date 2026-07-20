@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { DisplayCanvas } from "@/components/display/DisplayCanvas";
 import { Spinner } from "@/components/ui";

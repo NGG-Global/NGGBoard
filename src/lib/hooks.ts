@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { db } from "@/lib/data/local-db";
+import { db } from "@/lib/data";
 import type { RealtimeScope } from "@/lib/data/realtime";
 
 /**
