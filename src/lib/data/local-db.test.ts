@@ -28,6 +28,16 @@ describe("board creation and validation", () => {
     expect(dup.internal_name).toContain("עותק");
     expect(dup.id).not.toBe("board_innovation");
   });
+
+  it("permanently deletes a board and cascades to its rooms + submissions", () => {
+    // board_innovation has an active room (room_active) with seeded submissions.
+    expect(db.getBoard("board_innovation")).not.toBeNull();
+    expect(db.listSubmissions("room_active").length).toBeGreaterThan(0);
+    db.deleteBoard("board_innovation");
+    expect(db.getBoard("board_innovation")).toBeNull();
+    expect(db.getRoom("room_active")).toBeNull();
+    expect(db.listSubmissions("room_active")).toHaveLength(0);
+  });
 });
 
 describe("room activation", () => {

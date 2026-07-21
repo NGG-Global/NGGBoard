@@ -11,7 +11,7 @@ import { AppShell, type DashView } from "@/components/app/AppShell";
 import { BoardCard } from "@/components/app/BoardCard";
 import { BoardThumbnail } from "@/components/app/BoardThumbnail";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
-import { Button, EmptyState, LiveDot } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, LiveDot, useToast } from "@/components/ui";
 import { IconGrid, IconMonitor, IconSearch, IconTemplate } from "@/components/ui/icons";
 
 const PAGE_TITLES: Record<DashView, string> = {
@@ -25,10 +25,12 @@ const PAGE_TITLES: Record<DashView, string> = {
 
 function DashboardInner() {
   const router = useRouter();
+  const toast = useToast();
   const params = useSearchParams();
   const view = (params.get("view") as DashView) || "all";
   const [query, setQuery] = useState("");
   const [activateBoard, setActivateBoard] = useState<Board | null>(null);
+  const [endRoomId, setEndRoomId] = useState<string | null>(null);
 
   const boards = useLiveQuery("board-list", () => db.listBoards());
   const activeRooms = useLiveQuery("board-list", () => db.listActiveRooms());
@@ -163,6 +165,7 @@ function DashboardInner() {
                       <Link href={`/display/${room.public_id}`} target="_blank">
                         <Button variant="outline">פתח תצוגה</Button>
                       </Link>
+                      <Button variant="ghost" onClick={() => setEndRoomId(room.id)}>כבה</Button>
                     </div>
                   </div>
                 );
@@ -267,6 +270,15 @@ function DashboardInner() {
       </div>
 
       <RoomActivationDialog board={activateBoard} open={!!activateBoard} onClose={() => setActivateBoard(null)} />
+      <ConfirmDialog
+        open={!!endRoomId}
+        title="לכבות את החדר הפעיל?"
+        description="המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים."
+        confirmLabel="כבה מפגש"
+        danger
+        onConfirm={() => { if (endRoomId) db.endRoom(endRoomId); setEndRoomId(null); toast.show("המפגש הפעיל נסגר"); }}
+        onCancel={() => setEndRoomId(null)}
+      />
     </AppShell>
   );
 }

@@ -358,6 +358,16 @@ class SupabaseDB {
     if (!src) throw new Error("board not found");
     return this.createBoard({ ...src, internal_name: `${src.internal_name} (עותק)`, status: "draft" });
   }
+  /** Permanently delete a board; Postgres cascades to rooms/submissions. */
+  deleteBoard(id: string): void {
+    const roomIds = new Set(this.cache.rooms.filter((r) => r.board_id === id).map((r) => r.id));
+    this.cache.boards = this.cache.boards.filter((b) => b.id !== id);
+    this.cache.rooms = this.cache.rooms.filter((r) => r.board_id !== id);
+    this.cache.submissions = this.cache.submissions.filter((s) => !roomIds.has(s.room_id));
+    this.emit("board-list");
+    const sb = getSupabase();
+    void sb?.from("boards").delete().eq("id", id).then(({ error }) => error && console.warn("deleteBoard", error.message));
+  }
 
   // ---- rooms ----------------------------------------------------------------
   getRoom(id: string): LiveRoom | null {
@@ -461,6 +471,8 @@ class SupabaseDB {
     const next = { ...(this.cache.rooms[idx] as LiveRoom), ...patch };
     if (idx !== -1) this.cache.rooms[idx] = next;
     this.signalRoom(kind, id);
+    // Status changes flip "active now" membership watched via the board-list scope.
+    if (patch.status !== undefined) this.emit("board-list");
     const sb = getSupabase();
     void sb?.from("live_rooms").update(patch).eq("id", id).then(({ error }) => error && console.warn("patchRoom", error.message));
     return next;

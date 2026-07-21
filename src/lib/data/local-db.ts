@@ -200,6 +200,19 @@ class LocalDB {
     });
   }
 
+  /** Permanently delete a board and everything under it (rooms, submissions…). */
+  deleteBoard(id: string): void {
+    const db = this.read();
+    const roomIds = new Set(db.rooms.filter((r) => r.board_id === id).map((r) => r.id));
+    db.boards = db.boards.filter((b) => b.id !== id);
+    db.rooms = db.rooms.filter((r) => r.board_id !== id);
+    db.submissions = db.submissions.filter((s) => !roomIds.has(s.room_id));
+    db.participants = db.participants.filter((p) => !roomIds.has(p.room_id));
+    db.activity = db.activity.filter((a) => !roomIds.has(a.room_id));
+    db.moderation = db.moderation.filter((m) => !roomIds.has(m.room_id));
+    this.commit({ kind: "board-list" });
+  }
+
   // ---- rooms ----------------------------------------------------------------
 
   getRoom(id: string): LiveRoom | null {
@@ -294,6 +307,9 @@ class LocalDB {
     const next = { ...db.rooms[idx]!, ...patch };
     db.rooms[idx] = next;
     this.commit({ kind: signal, roomId: id });
+    // A room's status change flips its "active now" membership, which the
+    // dashboard / board list / detail watch via the board-list scope.
+    if (patch.status !== undefined) realtime.publish({ kind: "board-list" });
     return next;
   }
 

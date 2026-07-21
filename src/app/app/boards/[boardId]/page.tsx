@@ -12,8 +12,8 @@ import { AppShell } from "@/components/app/AppShell";
 import { EditorPreview } from "@/components/app/editor/EditorPreview";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { SessionHistoryTable } from "@/components/app/SessionHistoryTable";
-import { Button, BoardStatusBadge, Badge, EmptyState, useToast } from "@/components/ui";
-import { IconChevron, IconDuplicate, IconEdit, IconMonitor } from "@/components/ui/icons";
+import { Button, BoardStatusBadge, Badge, ConfirmDialog, EmptyState, useToast } from "@/components/ui";
+import { IconChevron, IconDuplicate, IconEdit, IconMonitor, IconTrash } from "@/components/ui/icons";
 
 const SHARE_LABELS: Record<SharingLevel, string> = {
   private: "פרטי",
@@ -29,6 +29,8 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
   const router = useRouter();
   const toast = useToast();
   const [activateOpen, setActivateOpen] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const board = useLiveQuery("board-list", () => db.getBoard(boardId));
   const sessions = useLiveQuery({ room: boardId }, () => db.getSessionSummaries(boardId));
@@ -86,6 +88,9 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
                 <Button variant="primary" block leadingIcon={<IconMonitor size={16} />} onClick={() => router.push(`/app/rooms/${activeRoom.id}/control`)}>
                   חזרה לחדר הבקרה
                 </Button>
+                <Button variant="ghost" block onClick={() => setConfirmEnd(true)}>
+                  כבה את החדר הפעיל
+                </Button>
               </div>
             ) : (
               <Button variant="primary" size="lg" block disabled={!ready} onClick={() => setActivateOpen(true)}>
@@ -127,11 +132,43 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
               <SummaryRow label="עודכן" value={formatAgo(board.updated_at)} />
               {board.last_activated_at && <SummaryRow label="הופעל לאחרונה" value={formatAgo(board.last_activated_at)} />}
             </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <Button variant="secondary" block onClick={() => { db.setBoardStatus(board.id, board.status === "archived" ? "ready" : "archived"); toast.show(board.status === "archived" ? "הלוח שוחזר מהארכיון" : "הלוח הועבר לארכיון"); }}>
+                {board.status === "archived" ? "שחזר מהארכיון" : "העבר לארכיון"}
+              </Button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="ngg-danger-hover"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid var(--danger)", background: "transparent", color: "var(--danger)", fontWeight: "var(--weight-bold)", fontSize: "var(--text-sm)", height: 40, borderRadius: "var(--radius-lg)", cursor: "pointer" }}
+              >
+                <IconTrash size={15} />
+                מחיקה לצמיתות
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       <RoomActivationDialog board={board} open={activateOpen} onClose={() => setActivateOpen(false)} />
+      <ConfirmDialog
+        open={confirmEnd}
+        title="לכבות את החדר הפעיל?"
+        description="המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים."
+        confirmLabel="כבה מפגש"
+        danger
+        onConfirm={() => { if (activeRoom) db.endRoom(activeRoom.id); setConfirmEnd(false); toast.show("המפגש הפעיל נסגר"); }}
+        onCancel={() => setConfirmEnd(false)}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        title="למחוק את הלוח לצמיתות?"
+        description={`הלוח "${board.internal_name}" וכל היסטוריית המפגשים והתוכן שנאסף יימחקו לצמיתות. לא ניתן לשחזר פעולה זו. אם ברצונכם לשמור את הנתונים, השתמשו ב"העבר לארכיון" במקום.`}
+        confirmLabel="מחק לצמיתות"
+        danger
+        onConfirm={() => { db.deleteBoard(board.id); setConfirmDelete(false); toast.show("הלוח נמחק לצמיתות"); router.push("/app/boards"); }}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </AppShell>
   );
 }
