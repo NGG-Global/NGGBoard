@@ -3,11 +3,12 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { Board, LiveRoom, Submission } from "@/lib/types";
-import { FONT_SCALE_FACTOR, themeVisual } from "@/lib/board-visuals";
+import { boardZones, FONT_SCALE_FACTOR, isZoned, themeVisual } from "@/lib/board-visuals";
 import { formatRoomCode } from "@/lib/utils";
 import { QRCodeCanvas, LiveDot } from "@/components/ui";
 import { IconPause, IconLock, IconClock } from "@/components/ui/icons";
-import { DisplaySubmission } from "./DisplaySubmission";
+import { DisplaySubmission, type FacilitatorCardActions } from "./DisplaySubmission";
+import type { BoardZone } from "@/lib/types";
 
 /** When present, published cards gain on-board hover controls. */
 export interface FacilitatorControls {
@@ -44,6 +45,7 @@ function pageSizeFor(layout: Board["default_layout"], count: number): number {
 
 export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip }: Props) {
   const v = themeVisual(board.appearance);
+  const zoned = isZoned(board);
   const facFor = (s: Submission) =>
     facilitator
       ? {
@@ -139,8 +141,10 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
 
       {/* Content area */}
       <div className="ngg-no-scrollbar" style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {ordered.length === 0 ? (
+        {ordered.length === 0 && !zoned ? (
           <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} />
+        ) : zoned ? (
+          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} />
         ) : room.layout === "mosaic" ? (
           <div style={{ columns: cols, columnGap: "clamp(12px, 1.4vw, 22px)", height: "100%", overflow: "hidden" }}>
             {pageItems.map((s) => (
@@ -182,7 +186,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
           </div>
         )}
         <div style={{ flex: 1 }} />
-        {pageCount > 1 && !focused && (
+        {pageCount > 1 && !focused && !zoned && (
           <div style={{ display: "flex", gap: 6 }} aria-hidden="true">
             {Array.from({ length: pageCount }).map((_, i) => (
               <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i === page ? "var(--accent)" : v.dark ? "rgba(255,255,255,.3)" : "rgba(8,8,16,.2)" }} />
@@ -235,6 +239,60 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
           <div style={{ fontSize: "var(--text-lg)", color: "var(--neutral-400)" }}>תודה על ההשתתפות</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Divided board: one titled column per zone, cards flow inside their zone. */
+function ZonedContent({
+  zones,
+  ordered,
+  board,
+  scale,
+  dark,
+  facFor,
+}: {
+  zones: BoardZone[];
+  ordered: Submission[];
+  board: Board;
+  scale: number;
+  dark: boolean;
+  facFor: (s: Submission) => FacilitatorCardActions | undefined;
+}) {
+  const firstZoneId = zones[0]?.id;
+  const byZone = new Map<string, Submission[]>();
+  for (const z of zones) byZone.set(z.id, []);
+  for (const s of ordered) {
+    const key = s.zone_id && byZone.has(s.zone_id) ? s.zone_id : firstZoneId;
+    if (key) byZone.get(key)!.push(s);
+  }
+  const headerColor = dark ? "#fff" : "var(--neutral-950)";
+  const subColor = dark ? "rgba(255,255,255,.72)" : "var(--neutral-700)";
+  const divider = dark ? "rgba(255,255,255,.16)" : "rgba(8,8,16,.12)";
+  const zoneScale = scale * (zones.length >= 3 ? 0.8 : 0.9);
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${zones.length}, 1fr)`, gap: "clamp(12px, 1.6vw, 26px)", height: "100%" }}>
+      {zones.map((z, i) => {
+        const items = byZone.get(z.id) ?? [];
+        return (
+          <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, height: "100%", borderInlineStart: i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: i > 0 ? "clamp(8px, 1vw, 18px)" : 0 }}>
+            <div style={{ flex: "none", paddingBottom: 10, marginBottom: 10, borderBottom: `2px solid ${divider}` }}>
+              <div style={{ fontSize: `clamp(16px, ${1.4 * scale}vw, ${28 * scale}px)`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
+                {z.title || `אזור ${i + 1}`}
+              </div>
+              {z.subtitle && <div style={{ fontSize: `clamp(11px, ${0.9 * scale}vw, ${16 * scale}px)`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
+            </div>
+            <div className="ngg-no-scrollbar" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
+              {items.length === 0 ? (
+                <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>עדיין אין תוכן באזור זה</div>
+              ) : (
+                items.slice(0, 12).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} />)
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

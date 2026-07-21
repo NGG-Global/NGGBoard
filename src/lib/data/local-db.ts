@@ -429,6 +429,7 @@ class LocalDB {
     participantSessionId: string;
     displayName?: string | null;
     anonymous?: boolean;
+    zoneId?: string | null;
     moderationMode: "immediate" | "approval";
   }): Submission {
     const db = this.read();
@@ -440,6 +441,7 @@ class LocalDB {
       type: input.type,
       text_content: input.text ?? null,
       media_url: input.mediaUrl ?? null,
+      zone_id: input.zoneId ?? null,
       participant_session_id: input.participantSessionId,
       display_name: input.anonymous ? null : input.displayName ?? null,
       anonymous: !!input.anonymous,

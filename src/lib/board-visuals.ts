@@ -1,4 +1,14 @@
-import type { BackgroundTheme, BoardAppearance, FontScale } from "@/lib/types";
+import type { BackgroundTheme, Board, BoardAppearance, BoardZone, FontScale } from "@/lib/types";
+
+/** Normalised zone list (empty when the board is undivided). */
+export function boardZones(board: Pick<Board, "zones">): BoardZone[] {
+  return Array.isArray(board.zones) ? board.zones : [];
+}
+
+/** True when the board is divided into 2–4 named regions. */
+export function isZoned(board: Pick<Board, "zones">): boolean {
+  return boardZones(board).length >= 2;
+}
 
 export interface ThemeVisual {
   /** CSS background value for the board surface. */

@@ -197,6 +197,7 @@ class SupabaseDB {
       sharing: "link",
       default_layout: v.layout,
       default_sort: "newest",
+      zones: Array.isArray(v.zones) ? v.zones : [],
       tags: [],
       folder: null,
       collaborator_ids: [],
@@ -316,6 +317,7 @@ class SupabaseDB {
       sharing: input.sharing ?? "private",
       default_layout: input.default_layout ?? "wall",
       default_sort: input.default_sort ?? "newest",
+      zones: input.zones ?? [],
       tags: input.tags ?? [],
       folder: input.folder ?? null,
       collaborator_ids: input.collaborator_ids ?? [],
@@ -546,6 +548,7 @@ class SupabaseDB {
     participantSessionId: string;
     displayName?: string | null;
     anonymous?: boolean;
+    zoneId?: string | null;
     moderationMode: "immediate" | "approval";
   }): Submission {
     const room = this.cache.rooms.find((r) => r.id === input.roomId);
@@ -558,6 +561,7 @@ class SupabaseDB {
       type: input.type,
       text_content: input.text ?? null,
       media_url: input.mediaUrl ?? null,
+      zone_id: input.zoneId ?? null,
       participant_session_id: input.participantSessionId,
       display_name: input.anonymous ? null : input.displayName ?? null,
       anonymous: !!input.anonymous,
@@ -579,6 +583,7 @@ class SupabaseDB {
         p_media_url: submission.media_url,
         p_anonymous: submission.anonymous,
         p_display_name: input.displayName ?? null,
+        p_zone_id: submission.zone_id,
       }).then(({ error }) => error && console.warn("create_submission", error.message));
     }
     return submission;
@@ -662,6 +667,7 @@ interface PublicViewRow {
   public_subtitle: string | null;
   appearance: Board["appearance"];
   participation: Partial<Board["participation"]>;
+  zones: Board["zones"] | null;
   moderation_mode: string | null;
   hide_identity_on_display: boolean | null;
 }

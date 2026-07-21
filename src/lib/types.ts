@@ -62,6 +62,13 @@ export interface BoardModerationSettings {
   blocked_words: string[];
 }
 
+/** A named region of the board. A board has 1–4 zones; 1 = undivided. */
+export interface BoardZone {
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
 export interface BoardAppearance {
   background_theme: BackgroundTheme;
   background_color: string | null;
@@ -87,6 +94,8 @@ export interface Board {
   sharing: SharingLevel;
   default_layout: DisplayLayout;
   default_sort: SortOrder;
+  /** 1–4 named regions. Length < 2 means the board is undivided. */
+  zones: BoardZone[];
   tags: string[];
   folder: string | null;
   collaborator_ids: string[];
@@ -154,6 +163,8 @@ export interface Submission {
   type: SubmissionType;
   text_content: string | null;
   media_url: string | null;
+  /** Which board zone this belongs to (null when the board is undivided). */
+  zone_id: string | null;
   participant_session_id: string;
   display_name: string | null;
   anonymous: boolean;

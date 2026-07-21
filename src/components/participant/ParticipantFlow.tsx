@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import type { Board, LiveRoom, ParticipantSession } from "@/lib/types";
+import type { Board, BoardZone, LiveRoom, ParticipantSession } from "@/lib/types";
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
+import { boardZones, isZoned } from "@/lib/board-visuals";
 import { SUBMISSION_RATE_LIMIT_MS } from "@/lib/constants";
 import { findBlockedWord, sanitizeText } from "@/lib/utils";
 import { validateSubmissionText } from "@/lib/validation";
@@ -12,7 +13,7 @@ import { Button, Input, Spinner } from "@/components/ui";
 import { IconCheck, IconClock, IconImage, IconText, IconWarning, IconWifiOff } from "@/components/ui/icons";
 import { ImageUploadField } from "./ImageUploadField";
 
-type Step = "join" | "choose" | "text" | "image" | "done";
+type Step = "join" | "zone" | "choose" | "text" | "image" | "done";
 
 function sessionKey(publicId: string) {
   return `ngg_participant_${publicId}`;
@@ -30,6 +31,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const [step, setStep] = useState<Step>("join");
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
+  const [zoneId, setZoneId] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   // Grace window: give the room a few seconds to load (a just-activated room
   // takes a moment to reach Supabase) before showing "not found".
@@ -89,6 +91,9 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const canImage = board.participation.allow_image;
   const allowMultiple = board.participation.multiple_submissions;
   const limitReached = !allowMultiple && mySubs.length > 0;
+  const zoned = isZoned(board);
+  const zones = boardZones(board);
+  const selectedZone = zones.find((z) => z.id === zoneId) ?? null;
 
   // Room lifecycle gates (apply regardless of step).
   if (room.status === "ended") {
@@ -115,7 +120,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
     if (!result) return;
     window.localStorage.setItem(sessionKey(publicId), result.session.id);
     setSessionId(result.session.id);
-    setStep("choose");
+    setStep(isZoned(board!) ? "zone" : "choose");
   }
 
   return (
@@ -141,34 +146,46 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
         />
       )}
 
-      {step === "choose" && (
+      {/* Zone picker (zoned boards). Also guards choose/compose if no zone yet. */}
+      {((step === "zone") || (zoned && !zoneId && (step === "choose" || step === "text" || step === "image"))) && (
+        <ZoneStep
+          zones={zones}
+          onPick={(id) => { setZoneId(id); setStep("choose"); }}
+        />
+      )}
+
+      {step === "choose" && (!zoned || zoneId) && (
         <ChooseStep
           canText={canText}
           canImage={canImage}
           limitReached={limitReached}
           submittedCount={mySubs.length}
+          zone={selectedZone}
+          onChangeZone={zoned ? () => setStep("zone") : undefined}
           onText={() => setStep("text")}
           onImage={() => setStep("image")}
         />
       )}
 
-      {step === "text" && sessionId && (
+      {step === "text" && sessionId && (!zoned || zoneId) && (
         <TextStep
           room={room}
           board={board}
           sessionId={sessionId}
           displayName={name}
+          zone={selectedZone}
           onDone={() => setStep("done")}
-          onBack={() => setStep(canText && canImage ? "choose" : "choose")}
+          onBack={() => setStep("choose")}
         />
       )}
 
-      {step === "image" && sessionId && (
+      {step === "image" && sessionId && (!zoned || zoneId) && (
         <ImageStep
           room={room}
           board={board}
           sessionId={sessionId}
           displayName={name}
+          zone={selectedZone}
           onDone={() => setStep("done")}
           onBack={() => setStep("choose")}
         />
@@ -178,7 +195,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
         <DoneStep
           approval={board.moderation.mode === "approval"}
           allowMore={allowMultiple}
-          onAnother={() => setStep("choose")}
+          onAnother={() => { if (zoned) { setZoneId(null); setStep("zone"); } else setStep("choose"); }}
           publicId={publicId}
         />
       )}
@@ -212,12 +229,50 @@ function JoinStep({ board, name, nameError, onName, onContinue, participants }: 
   );
 }
 
-function ChooseStep({ canText, canImage, limitReached, submittedCount, onText, onImage }: { canText: boolean; canImage: boolean; limitReached: boolean; submittedCount: number; onText: () => void; onImage: () => void }) {
+function ZoneStep({ zones, onPick }: { zones: BoardZone[]; onPick: (id: string) => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>לאיזה אזור לשלוח?</div>
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>בחרו את האזור שאליו התוכן שלכם יופיע על המסך.</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {zones.map((z, i) => (
+          <button
+            key={z.id}
+            onClick={() => onPick(z.id)}
+            className="ngg-card-hover"
+            style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", padding: "16px 18px", cursor: "pointer", textAlign: "start", minHeight: 72 }}
+          >
+            <span style={{ width: 40, height: 40, borderRadius: "var(--radius-lg)", background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "var(--weight-black)", fontSize: "var(--text-lg)", flex: "none" }}>{i + 1}</span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{z.title || `אזור ${i + 1}`}</span>
+              {z.subtitle && <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>{z.subtitle}</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--accent-soft)", border: "1px solid var(--magenta-200)", borderRadius: "var(--radius-lg)", padding: "8px 12px" }}>
+      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>אזור:</span>
+      <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)", flex: 1, minWidth: 0 }}>{zone.title || "ללא שם"}</span>
+      {onChange && (
+        <button onClick={onChange} style={{ border: "none", background: "transparent", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", cursor: "pointer" }}>שינוי</button>
+      )}
+    </div>
+  );
+}
+
+function ChooseStep({ canText, canImage, limitReached, submittedCount, zone, onChangeZone, onText, onImage }: { canText: boolean; canImage: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void }) {
   if (limitReached) {
     return <StateCard icon={<IconCheck size={40} />} title="כבר שלחתם" description="בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!" />;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {zone && <ZoneBanner zone={zone} onChange={onChangeZone} />}
       <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>מה תרצו לשלוח?</div>
       {submittedCount > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>שלחתם {submittedCount} פריטים עד כה — אפשר להוסיף עוד.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -228,7 +283,7 @@ function ChooseStep({ canText, canImage, limitReached, submittedCount, onText, o
   );
 }
 
-function TextStep({ room, board, sessionId, displayName, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; onDone: () => void; onBack: () => void }) {
+function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -260,6 +315,7 @@ function TextStep({ room, board, sessionId, displayName, onDone, onBack }: { roo
         participantSessionId: sessionId,
         displayName,
         anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+        zoneId: zone?.id ?? null,
         moderationMode: board.moderation.mode,
       });
       setSubmitting(false);
@@ -270,7 +326,8 @@ function TextStep({ room, board, sessionId, displayName, onDone, onBack }: { roo
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
       <BackLink onClick={onBack} />
-      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{board.public_subtitle || "כתבו את התשובה שלכם"}</div>
+      {zone && <ZoneBanner zone={zone} />}
+      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{zone?.subtitle || board.public_subtitle || "כתבו את התשובה שלכם"}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
         <textarea
           value={text}
@@ -294,7 +351,7 @@ function TextStep({ room, board, sessionId, displayName, onDone, onBack }: { roo
   );
 }
 
-function ImageStep({ room, board, sessionId, displayName, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; onDone: () => void; onBack: () => void }) {
+function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
   const [image, setImage] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -312,6 +369,7 @@ function ImageStep({ room, board, sessionId, displayName, onDone, onBack }: { ro
         participantSessionId: sessionId,
         displayName,
         anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+        zoneId: zone?.id ?? null,
         moderationMode: board.moderation.mode,
       });
       setSubmitting(false);
@@ -322,6 +380,7 @@ function ImageStep({ room, board, sessionId, displayName, onDone, onBack }: { ro
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <BackLink onClick={onBack} />
+      {zone && <ZoneBanner zone={zone} />}
       <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>הוסיפו תמונה</div>
       <ImageUploadField value={image} onChange={setImage} maxSizeMb={board.participation.image_size_limit_mb} />
       {image && (

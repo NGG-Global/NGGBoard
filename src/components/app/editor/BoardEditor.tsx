@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import type { Board, BackgroundTheme, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
+import type { Board, BackgroundTheme, BoardZone, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
 import { db } from "@/lib/data";
 import { THEME_VISUALS } from "@/lib/board-visuals";
 import { boardFormSchema } from "@/lib/validation";
@@ -23,6 +23,7 @@ type Draft = {
   sharing: SharingLevel;
   default_layout: DisplayLayout;
   default_sort: Board["default_sort"];
+  zones: BoardZone[];
   tags: string[];
   folder: string | null;
 };
@@ -39,6 +40,7 @@ function draftFromBoard(b: Board): Draft {
     sharing: b.sharing,
     default_layout: b.default_layout,
     default_sort: b.default_sort,
+    zones: Array.isArray(b.zones) ? b.zones.map((z) => ({ ...z })) : [],
     tags: [...b.tags],
     folder: b.folder,
   };
@@ -81,9 +83,15 @@ function blankDraft(): Draft {
     sharing: "private",
     default_layout: "wall",
     default_sort: "newest",
+    zones: [],
     tags: [],
     folder: null,
   };
+}
+
+/** Zone id helpers — stable ids z1..z4. */
+function makeZones(count: number, prev: BoardZone[]): BoardZone[] {
+  return Array.from({ length: count }, (_, i) => prev[i] ?? { id: `z${i + 1}`, title: "", subtitle: "" });
 }
 
 const SHARE_LABELS: Record<SharingLevel, string> = {
@@ -146,6 +154,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       sharing: draft.sharing,
       default_layout: draft.default_layout,
       default_sort: draft.default_sort,
+      zones: draft.zones.length >= 2 ? draft.zones : [],
       tags: draft.tags,
       folder: draft.folder,
       status: "ready",
@@ -167,6 +176,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       s4: draft.moderation.mode === "approval" ? "אישור לפני הצגה" : "הצגה מיידית",
       s5: SHARE_LABELS[draft.sharing],
       s6: LAYOUT_LABELS[draft.default_layout],
+      s7: draft.zones.length >= 2 ? `${draft.zones.length} אזורים` : "ללא חלוקה",
     };
   }, [draft]);
 
@@ -361,6 +371,54 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
               <Radio name="sort" label="החדש ביותר קודם" checked={draft.default_sort === "newest"} onChange={() => patch({ default_sort: "newest" })} />
               <Radio name="sort" label="הישן ביותר קודם" checked={draft.default_sort === "oldest"} onChange={() => patch({ default_sort: "oldest" })} />
             </div>
+          </EditorSection>
+
+          <EditorSection index={7} title="חלוקה לאזורים" summary={summaries.s7} open={openSec === 7} onToggle={() => setOpenSec(openSec === 7 ? 0 : 7)}>
+            <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
+              חלקו את הלוח לאזורים. המשתתפים יבחרו לאיזה אזור לשלוח, והתוכן יופיע באזור שנבחר על המסך.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>מספר אזורים</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[1, 2, 3, 4].map((n) => {
+                  const active = (draft.zones.length || 1) === n;
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => patch({ zones: n <= 1 ? [] : makeZones(n, draft.zones) })}
+                      aria-pressed={active}
+                      style={{ flex: 1, padding: "10px", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--magenta-500)" : "var(--border)"}`, background: active ? "var(--accent-soft)" : "var(--surface)", color: active ? "var(--accent-text)" : "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", cursor: "pointer" }}
+                    >
+                      {n === 1 ? "ללא" : n}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {draft.zones.length >= 2 &&
+              draft.zones.map((z, i) => (
+                <div key={z.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)" }}>
+                  <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>אזור {i + 1}</div>
+                  <Input
+                    label="כותרת האזור"
+                    value={z.title}
+                    onChange={(e) => {
+                      const zones = draft.zones.map((x, xi) => (xi === i ? { ...x, title: e.target.value } : x));
+                      patch({ zones });
+                    }}
+                    placeholder="למשל: לשמר"
+                  />
+                  <Input
+                    label="תת־כותרת"
+                    value={z.subtitle}
+                    onChange={(e) => {
+                      const zones = draft.zones.map((x, xi) => (xi === i ? { ...x, subtitle: e.target.value } : x));
+                      patch({ zones });
+                    }}
+                    placeholder="הסבר קצר על האזור"
+                  />
+                </div>
+              ))}
           </EditorSection>
         </div>
 

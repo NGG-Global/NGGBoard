@@ -25,7 +25,16 @@ export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ff
       margin: 1,
       errorCorrectionLevel: "M",
       color: { dark, light },
-    }).catch((err) => console.warn("QR render failed", err));
+    })
+      .then(() => {
+        // `qrcode` overwrites the canvas inline width/height in px during render,
+        // which — combined with the global `canvas { max-width: 100% }` reset —
+        // can distort the QR into a rectangle. Re-assert a fixed square after.
+        canvas.style.width = `${size}px`;
+        canvas.style.height = `${size}px`;
+        canvas.style.maxWidth = "none";
+      })
+      .catch((err) => console.warn("QR render failed", err));
   }, [value, size, dark, light]);
 
   return (
@@ -36,7 +45,7 @@ export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ff
       role="img"
       aria-label={`קוד QR להצטרפות: ${value}`}
       className={className}
-      style={{ width: size, height: size, borderRadius: "var(--radius-lg)", ...style }}
+      style={{ width: size, height: size, maxWidth: "none", display: "block", borderRadius: "var(--radius-lg)", ...style }}
     />
   );
 }
