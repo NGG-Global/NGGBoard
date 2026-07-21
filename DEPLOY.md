@@ -52,6 +52,34 @@ In the Supabase dashboard → **Authentication → URL Configuration**:
 4. Sign up → create and activate a board → open the display and join from a
    phone. Submissions should flow live across devices.
 
+## ⚠️ Keep joining OPEN — disable Vercel Deployment Protection
+
+Participants scan a QR / open a link with **no account**. Vercel can put an
+authentication wall in front of the whole site, which would block them. The app
+itself never gates `/join`, `/display`, or `/results` (no auth guard, no
+middleware — verified), so any lock comes from Vercel settings:
+
+1. **Vercel dashboard → Project → Settings → Deployment Protection.**
+   - **Vercel Authentication:** set to **Disabled** for **Production** (it's ON
+     for Preview by default). If you must protect previews, that's fine — just
+     never share a *preview* QR/link with participants.
+   - **Password Protection:** **Off** (or it prompts every participant).
+   - **Trusted IPs:** **Off** (it would block participants' networks).
+2. **Always run live sessions from the PRODUCTION domain.** Preview URLs
+   (`…-git-branch-….vercel.app`) are protected by default, and the QR/link the
+   app generates points at whatever origin the facilitator is on — so if the
+   facilitator opens a preview URL, the QR will point to a locked preview.
+
+### Verify joining is open (run after deploy)
+
+```bash
+# Should print 200. A 401 means Deployment Protection is still on.
+curl -s -o /dev/null -w "%{http_code}\n" https://YOUR-DOMAIN/join
+```
+
+Or open `https://YOUR-DOMAIN/join` in a private browser window with no Vercel
+account — you should see the room-code entry screen, not a Vercel login.
+
 ## Custom domain (optional)
 
 **Settings → Domains** → add e.g. `boards.nggconsult.com`, then update
