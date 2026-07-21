@@ -20,12 +20,29 @@ import {
   IconEyeOff,
   IconPause,
   IconPlay,
+  IconTrash,
   IconUsers,
   IconWarning,
   IconX,
 } from "@/components/ui/icons";
 
 type Tab = "published" | "pending" | "hidden" | "rejected";
+
+const resetBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  padding: "9px 10px",
+  border: "1px solid var(--border-strong)",
+  background: "var(--surface)",
+  color: "var(--text)",
+  borderRadius: "var(--radius-md)",
+  fontSize: "var(--text-xs)",
+  fontWeight: "var(--weight-bold)",
+  cursor: "pointer",
+  textAlign: "start",
+};
 const TAB_LABELS: Record<Tab, string> = { published: "מוצג", pending: "ממתין", hidden: "מוסתר", rejected: "נדחה" };
 const DRAWER_W = 372;
 
@@ -38,11 +55,14 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
   const room = useLiveQuery({ room: roomId }, () => db.getRoom(roomId));
   const board = useLiveQuery({ room: roomId }, () => db.getBoardForRoom(roomId));
   const submissions = useLiveQuery({ room: roomId }, () => db.listSubmissions(roomId));
+  const participants = useLiveQuery({ room: roomId }, () => db.listParticipants(roomId));
 
   const [open, setOpen] = useState(true);
   const [tab, setTab] = useState<Tab>("pending");
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmClearBoard, setConfirmClearBoard] = useState(false);
+  const [confirmResetSession, setConfirmResetSession] = useState(false);
+  const [rosterOpen, setRosterOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [joinUrl, setJoinUrl] = useState("");
   const [isFs, setIsFs] = useState(false);
@@ -220,13 +240,40 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
                   </button>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>
+              <button
+                onClick={() => setRosterOpen((v) => !v)}
+                aria-expanded={rosterOpen}
+                className="ngg-hover"
+                style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4, border: "1px solid var(--border)", background: "var(--surface)", borderRadius: "var(--radius-md)", padding: "8px 10px", cursor: "pointer", width: "100%" }}
+              >
                 <IconUsers size={16} />
-                <strong style={{ fontWeight: "var(--weight-extrabold)", color: "var(--text)" }}>{room.participant_count}</strong> משתתפים
-                <button onClick={() => setConfirmReset(true)} className="ngg-hover" style={{ marginInlineStart: "auto", border: "none", background: "transparent", color: "var(--text-subtle)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: "4px 6px", borderRadius: "var(--radius-md)" }}>
-                  איפוס רשימה
-                </button>
-              </div>
+                <strong style={{ fontWeight: "var(--weight-extrabold)", color: "var(--text)" }}>{room.participant_count}</strong> משתתפים מחוברים
+                <span style={{ marginInlineStart: "auto", display: "flex", transform: rosterOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform var(--dur) var(--ease-out)", color: "var(--text-subtle)" }}>
+                  <IconChevron size={14} strokeWidth={2.2} />
+                </span>
+              </button>
+              {rosterOpen && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 8 }}>
+                  {participants.length === 0 ? (
+                    <div style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)", textAlign: "center", padding: "10px 0" }}>עדיין לא הצטרפו משתתפים</div>
+                  ) : (
+                    participants.map((p) => {
+                      const anon = !p.display_name;
+                      return (
+                        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 24, height: 24, borderRadius: "50%", background: anon ? "var(--bg-muted)" : "var(--accent-soft)", color: anon ? "var(--text-subtle)" : "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-extrabold)", flex: "none" }}>
+                            {anon ? "?" : p.display_name!.charAt(0)}
+                          </span>
+                          <span style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", color: anon ? "var(--text-subtle)" : "var(--text)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {p.display_name || "אנונימי"}
+                          </span>
+                          <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{formatAgo(p.created_at)}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
               <Button variant={room.qr_overlay_visible ? "primary" : "secondary"} size="sm" block onClick={() => db.setQrOverlay(roomId, !room.qr_overlay_visible)}>
                 {room.qr_overlay_visible ? "הסתר QR מהמסך" : "הצג QR על המסך"}
               </Button>
@@ -260,6 +307,16 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
                 <Button variant="secondary" size="sm" block leadingIcon={<IconExpand size={14} />} onClick={toggleFullscreen}>{isFs ? "צא ממסך מלא" : "מסך מלא"}</Button>
                 <Button variant="danger" size="sm" block onClick={() => setConfirmEnd(true)}>סיים מפגש</Button>
               </div>
+            </SectionCard>
+
+            {/* Reset actions */}
+            <SectionCard title="איפוס">
+              <button onClick={() => setConfirmClearBoard(true)} className="ngg-hover" style={resetBtnStyle}>
+                <IconTrash size={14} /> אפס לוח — מחק את כל התוכן
+              </button>
+              <button onClick={() => setConfirmResetSession(true)} className="ngg-danger-hover" style={{ ...resetBtnStyle, color: "var(--danger)", borderColor: "var(--danger)" }}>
+                <IconUsers size={14} /> אפס מפגש — נקה תוכן והוצא את כל המשתתפים
+              </button>
             </SectionCard>
 
             {/* Content moderation */}
@@ -322,13 +379,22 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
         onCancel={() => setConfirmEnd(false)}
       />
       <ConfirmDialog
-        open={confirmReset}
-        title="לאפס את רשימת המשתתפים?"
-        description="מונה המשתתפים יתאפס לאפס. התוכן שכבר נשלח יישאר על הלוח. המשתתפים יוכלו להצטרף מחדש."
-        confirmLabel="אפס רשימה"
+        open={confirmClearBoard}
+        title="לאפס את הלוח?"
+        description="כל התוכן שהוצג יימחק מהלוח. המשתתפים המחוברים יישארו ויוכלו להמשיך לשלוח תוכן חדש."
+        confirmLabel="אפס לוח"
         danger
-        onConfirm={() => { db.resetParticipants(roomId); setConfirmReset(false); toast.show("רשימת המשתתפים אופסה"); }}
-        onCancel={() => setConfirmReset(false)}
+        onConfirm={() => { db.clearSubmissions(roomId); setConfirmClearBoard(false); toast.show("הלוח אופס — התוכן נמחק"); }}
+        onCancel={() => setConfirmClearBoard(false)}
+      />
+      <ConfirmDialog
+        open={confirmResetSession}
+        title="לאפס את המפגש?"
+        description="כל התוכן יימחק וכל המשתתפים יוצאו מהמפגש (יצטרכו להצטרף מחדש). החדר יישאר פעיל עם אותו קוד ו-QR — כמו מפגש חדש."
+        confirmLabel="אפס מפגש"
+        danger
+        onConfirm={() => { db.resetSession(roomId); setConfirmResetSession(false); toast.show("המפגש אופס — התוכן נמחק והמשתתפים הוצאו"); }}
+        onCancel={() => setConfirmResetSession(false)}
       />
     </div>
   );

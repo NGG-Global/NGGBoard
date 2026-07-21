@@ -164,6 +164,7 @@ class SupabaseDB {
       if (board) this.upsert(this.cache.boards, board as Board);
     }
     await this.loadSubmissions(room.id, true);
+    void this.loadParticipants(room.id);
     this.subscribeRoom(room.id);
     this.signalRoom("room", room.id);
   }
@@ -241,6 +242,9 @@ class SupabaseDB {
       .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `id=eq.${roomId}` }, (p) => {
         if (p.new) this.upsert(this.cache.rooms, p.new as LiveRoom);
         this.signalRoom("room", roomId);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "participant_sessions", filter: `room_id=eq.${roomId}` }, () => {
+        void this.loadParticipants(roomId);
       })
       .subscribe();
     this.channels.set(roomId, ch);
@@ -528,6 +532,41 @@ class SupabaseDB {
   }
   getParticipant(id: string): ParticipantSession | null {
     return this.cache.participants.find((p) => p.id === id) ?? null;
+  }
+
+  /** Roster of participants who joined a room (authenticated read; RLS-scoped). */
+  listParticipants(roomId: string): ParticipantSession[] {
+    return this.cache.participants
+      .filter((p) => p.room_id === roomId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  private async loadParticipants(roomId: string) {
+    const sb = getSupabase();
+    if (!sb || !this.currentProfileId) return;
+    const { data } = await sb.from("participant_sessions").select("*").eq("room_id", roomId);
+    if (data) {
+      this.cache.participants = this.cache.participants.filter((p) => p.room_id !== roomId).concat(data as ParticipantSession[]);
+      this.signalRoom("participants", roomId);
+    }
+  }
+
+  /** Clear all content from the board (soft-delete every submission), keep the room. */
+  clearSubmissions(roomId: string): void {
+    this.cache.submissions = this.cache.submissions.map((s) =>
+      s.room_id === roomId && s.status !== "deleted" ? { ...s, status: "deleted" as const, updated_at: new Date().toISOString() } : s,
+    );
+    this.setFocus(roomId, null);
+    this.signalRoom("submissions", roomId);
+    const sb = getSupabase();
+    void sb?.from("submissions").update({ status: "deleted" }).eq("room_id", roomId).neq("status", "deleted")
+      .then(({ error }) => error && console.warn("clearSubmissions", error.message));
+  }
+
+  /** Reset the whole session: clear content AND remove all participants. */
+  resetSession(roomId: string): void {
+    this.clearSubmissions(roomId);
+    this.resetParticipants(roomId);
   }
 
   /** Clear the room's participant roster and reset the live count to zero. */

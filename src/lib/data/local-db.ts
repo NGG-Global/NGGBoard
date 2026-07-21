@@ -404,6 +404,29 @@ class LocalDB {
     return this.read().participants.find((p) => p.id === id) ?? null;
   }
 
+  /** Roster of participants who joined a room, newest first. */
+  listParticipants(roomId: string): ParticipantSession[] {
+    return this.read()
+      .participants.filter((p) => p.room_id === roomId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  /** Clear all content from the board (soft-delete every submission), keep the room. */
+  clearSubmissions(roomId: string): void {
+    const db = this.read();
+    db.submissions = db.submissions.map((s) =>
+      s.room_id === roomId && s.status !== "deleted" ? { ...s, status: "deleted", updated_at: new Date().toISOString() } : s,
+    );
+    this.setFocus(roomId, null);
+    this.commit({ kind: "submissions", roomId });
+  }
+
+  /** Reset the whole session: clear content AND remove all participants. */
+  resetSession(roomId: string): void {
+    this.clearSubmissions(roomId);
+    this.resetParticipants(roomId);
+  }
+
   /** Clear the room's participant roster and reset the live count to zero. */
   resetParticipants(id: string): void {
     const db = this.read();
