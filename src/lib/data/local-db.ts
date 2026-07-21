@@ -31,12 +31,27 @@ class LocalDB {
   private syncing = false;
 
   constructor() {
-    // In the browser, invalidate our in-memory cache whenever *any* tab writes,
-    // so cross-tab realtime signals reflect the freshly-persisted state.
+    // In the browser, refresh our in-memory cache the instant *another* tab
+    // writes. The data layer registers this raw listener at module load —
+    // before any component subscribes — so RealtimeBus (which dispatches in
+    // subscription order) always runs it first. By the time a component's
+    // useLiveQuery refresh runs for the same signal, `memory` is already fresh.
+    // Reloading eagerly here (rather than lazily on the next read) removes the
+    // read-ordering race that could otherwise serve stale data for one tick.
     if (typeof window !== "undefined") {
       realtime.subscribeRaw(() => {
         if (this.syncing) return; // ignore the echo from our own commit
         this.reloadFromStorage();
+      });
+      // BroadcastChannel delivers the *signal* fast, but localStorage writes are
+      // NOT synchronously visible across renderer processes — a cross-tab signal
+      // can arrive before the writing tab's data has propagated here, so the
+      // reload above may read a stale value. The `storage` event fires only once
+      // the new value is committed, so reloading here is guaranteed fresh. This
+      // listener is registered at module load (before any component subscribes),
+      // so memory is refreshed before useLiveQuery's own `storage` handler runs.
+      window.addEventListener("storage", (e) => {
+        if (e.key === null || e.key === STORAGE_KEY) this.reloadFromStorage();
       });
     }
   }
@@ -90,6 +105,15 @@ class LocalDB {
     this.syncing = true;
     try {
       realtime.publish(signal);
+      // Room-scoped signals carry the internal room id, but the display and
+      // participant pages subscribe by the PUBLIC id — emit that variant too so
+      // pause/focus/layout/qr/room-state changes reach them without a refresh.
+      if (signal.roomId) {
+        const room = this.memory?.rooms.find((r) => r.id === signal.roomId);
+        if (room?.public_id && room.public_id !== signal.roomId) {
+          realtime.publish({ ...signal, roomId: room.public_id });
+        }
+      }
     } finally {
       this.syncing = false;
     }

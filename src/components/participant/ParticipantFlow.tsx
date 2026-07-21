@@ -62,9 +62,10 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
     };
   }, []);
 
-  const mySubs = useLiveQuery({ room: room?.id ?? publicId }, () =>
-    room && sessionId ? db.listSubmissionsForParticipant(room.id, sessionId) : [],
-  );
+  const mySubs = useLiveQuery({ room: publicId }, () => {
+    const r = db.getRoomByPublicId(publicId);
+    return r && sessionId ? db.listSubmissionsForParticipant(r.id, sessionId) : [];
+  });
 
   if (!mounted) return <Centered><Spinner size={28} /></Centered>;
 

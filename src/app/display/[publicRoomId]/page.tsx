@@ -17,9 +17,13 @@ export default function DisplayPage({ params }: { params: Promise<{ publicRoomId
     const r = db.getRoomByPublicId(publicRoomId);
     return r ? db.getBoard(r.board_id) : null;
   });
-  const submissions = useLiveQuery({ room: room?.id ?? publicRoomId }, () =>
-    room ? db.listSubmissions(room.id).filter((s) => s.status === "published") : [],
-  );
+  // Subscribe by the stable public id (never depends on the async-loaded room
+  // object); resolve the room inside the selector. commit() emits the public-id
+  // signal variant for every room change, so this fires on every submission.
+  const submissions = useLiveQuery({ room: publicRoomId }, () => {
+    const r = db.getRoomByPublicId(publicRoomId);
+    return r ? db.listSubmissions(r.id).filter((s) => s.status === "published") : [];
+  });
 
   const [graceOver, setGraceOver] = useState(false);
   useEffect(() => {

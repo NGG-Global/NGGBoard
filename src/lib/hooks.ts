@@ -23,7 +23,17 @@ export function useLiveQuery<T>(scope: RealtimeScope, selector: () => T): T {
   useEffect(() => {
     refresh(); // hydrate from localStorage after mount
     const unsub = db.subscribe(scope, refresh);
-    return unsub;
+    // Cross-tab writes: the `storage` event fires once the new value is
+    // committed (unlike the BroadcastChannel signal, which can outrun the
+    // localStorage write across renderer processes). The data layer's own
+    // `storage` listener — registered at module load — reloads memory first,
+    // so this refresh reads fresh data. Harmless no-op on the Supabase backend.
+    const onStorage = () => refresh();
+    window.addEventListener("storage", onStorage);
+    return () => {
+      unsub();
+      window.removeEventListener("storage", onStorage);
+    };
     // scope is stable per-usage; stringify guards accidental re-subscribes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeof scope === "string" ? scope : scope.room, refresh]);

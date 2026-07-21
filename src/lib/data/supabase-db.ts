@@ -91,6 +91,32 @@ class SupabaseDB {
     if (orgs) this.cache.organizations = orgs as Database["organizations"];
     if (boards) this.cache.boards = boards as Board[];
     this.emit("board-list");
+    this.subscribeBoardList();
+  }
+
+  private boardListSubscribed = false;
+  /** Org-wide realtime so the dashboard / "active now" updates across devices
+   *  even before any specific room is opened. */
+  private subscribeBoardList() {
+    const sb = getSupabase();
+    if (!sb || this.boardListSubscribed) return;
+    this.boardListSubscribed = true;
+    sb.channel("board-list")
+      .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms" }, (p) => {
+        const row = (p.new && (p.new as LiveRoom).id ? p.new : p.old) as LiveRoom | undefined;
+        if (p.eventType === "DELETE" && row) this.cache.rooms = this.cache.rooms.filter((r) => r.id !== row.id);
+        else if (row?.id) this.upsert(this.cache.rooms, row);
+        this.emit("board-list");
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "boards" }, (p) => {
+        if (p.eventType === "DELETE" && p.old && (p.old as Board).id) {
+          this.cache.boards = this.cache.boards.filter((b) => b.id !== (p.old as Board).id);
+        } else if (p.new && (p.new as Board).id) {
+          this.upsert(this.cache.boards, p.new as Board);
+        }
+        this.emit("board-list");
+      })
+      .subscribe();
   }
 
   /**
