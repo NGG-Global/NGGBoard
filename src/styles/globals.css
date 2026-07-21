@@ -69,6 +69,41 @@
   .ngg-detail-grid { grid-template-columns: 1fr !important; }
 }
 
+/* Facilitator on-board card actions: revealed on hover of a display card */
+.ngg-fac-card { position: relative; }
+.ngg-fac-actions {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+  pointer-events: none;
+}
+.ngg-fac-card:hover .ngg-fac-actions,
+.ngg-fac-actions:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  /* Touch devices: always show (no hover) */
+  .ngg-fac-actions { opacity: 1; transform: none; pointer-events: auto; }
+}
+.ngg-fac-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: none; border-radius: var(--radius-md);
+  background: rgba(255,255,255,.92); color: var(--neutral-800);
+  cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: var(--transition-colors);
+}
+.ngg-fac-btn:hover { background: #fff; color: var(--accent-text); }
+.ngg-fac-btn[data-active="true"] { background: var(--accent); color: #fff; }
+.ngg-fac-btn[data-danger="true"]:hover { background: var(--danger); color: #fff; }
+
+/* Control drawer handle */
+.ngg-drawer-handle {
+  transition: var(--transition-colors), box-shadow var(--dur) var(--ease-out);
+}
+.ngg-drawer-handle:hover { background: var(--accent-hover) !important; }
+
 /* Utility: hide scrollbars on projector display */
 .ngg-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .ngg-no-scrollbar::-webkit-scrollbar { display: none; }

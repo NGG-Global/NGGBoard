@@ -388,6 +388,13 @@ class LocalDB {
     return this.read().participants.find((p) => p.id === id) ?? null;
   }
 
+  /** Clear the room's participant roster and reset the live count to zero. */
+  resetParticipants(id: string): void {
+    const db = this.read();
+    db.participants = db.participants.filter((p) => p.room_id !== id);
+    this.patchRoom(id, { participant_count: 0 }, "participants");
+  }
+
   // ---- submissions ----------------------------------------------------------
 
   listSubmissions(roomId: string): Submission[] {

@@ -516,6 +516,14 @@ class SupabaseDB {
     return this.cache.participants.find((p) => p.id === id) ?? null;
   }
 
+  /** Clear the room's participant roster and reset the live count to zero. */
+  resetParticipants(id: string): void {
+    this.cache.participants = this.cache.participants.filter((p) => p.room_id !== id);
+    this.patchRoom(id, { participant_count: 0 }, "participants");
+    const sb = getSupabase();
+    void sb?.from("participant_sessions").delete().eq("room_id", id).then(({ error }) => error && console.warn("resetParticipants", error.message));
+  }
+
   // ---- submissions ----------------------------------------------------------
   listSubmissions(roomId: string): Submission[] {
     return this.cache.submissions

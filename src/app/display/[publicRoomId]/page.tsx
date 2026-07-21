@@ -46,5 +46,9 @@ export default function DisplayPage({ params }: { params: Promise<{ publicRoomId
     );
   }
 
-  return <DisplayCanvas room={room} board={board} submissions={submissions} joinUrl={joinUrl} />;
+  return (
+    <div style={{ height: "100vh", width: "100vw", overflow: "hidden" }}>
+      <DisplayCanvas room={room} board={board} submissions={submissions} joinUrl={joinUrl} />
+    </div>
+  );
 }

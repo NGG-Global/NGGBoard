@@ -9,11 +9,24 @@ import { QRCodeCanvas, LiveDot } from "@/components/ui";
 import { IconPause, IconLock, IconClock } from "@/components/ui/icons";
 import { DisplaySubmission } from "./DisplaySubmission";
 
+/** When present, published cards gain on-board hover controls. */
+export interface FacilitatorControls {
+  focusedId: string | null;
+  onFocus: (id: string) => void;
+  onPin: (id: string) => void;
+  onHide: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
 interface Props {
   room: LiveRoom;
   board: Board;
   submissions: Submission[];
   joinUrl: string;
+  /** Facilitator mode: enables direct move/remove on the board. */
+  facilitator?: FacilitatorControls;
+  /** Hide the built-in header QR chip (e.g. when the drawer shows it). */
+  hideJoinChip?: boolean;
 }
 
 function columnsFor(count: number): number {
@@ -29,8 +42,18 @@ function pageSizeFor(layout: Board["default_layout"], count: number): number {
   return count <= 20 ? count : 20; // wall/mosaic paginate above 20
 }
 
-export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
+export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip }: Props) {
   const v = themeVisual(board.appearance);
+  const facFor = (s: Submission) =>
+    facilitator
+      ? {
+          focused: facilitator.focusedId === s.id,
+          onFocus: () => facilitator.onFocus(s.id),
+          onPin: () => facilitator.onPin(s.id),
+          onHide: () => facilitator.onHide(s.id),
+          onDelete: () => facilitator.onDelete(s.id),
+        }
+      : undefined;
   const baseScale = FONT_SCALE_FACTOR[board.appearance.font_scale];
   const textColor = v.dark ? "#ffffff" : "var(--neutral-950)";
   const subColor = v.dark ? "rgba(255,255,255,.8)" : "var(--neutral-700)";
@@ -75,8 +98,8 @@ export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
     <div
       dir="rtl"
       style={{
-        height: "100vh",
-        width: "100vw",
+        height: "100%",
+        width: "100%",
         background: v.background,
         color: textColor,
         fontFamily: "var(--font-sans)",
@@ -104,12 +127,14 @@ export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
           )}
         </div>
         {/* Persistent small join hint */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: "none", background: "rgba(255,255,255,.94)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
-          <QRCodeCanvas value={joinUrl} size={84} />
-          <div dir="ltr" style={{ fontSize: 15, fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".06em" }}>
-            {formatRoomCode(room.room_code)}
+        {!hideJoinChip && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: "none", background: "rgba(255,255,255,.94)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+            <QRCodeCanvas value={joinUrl} size={84} />
+            <div dir="ltr" style={{ fontSize: 15, fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".06em" }}>
+              {formatRoomCode(room.room_code)}
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       {/* Content area */}
@@ -120,7 +145,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
           <div style={{ columns: cols, columnGap: "clamp(12px, 1.4vw, 22px)", height: "100%", overflow: "hidden" }}>
             {pageItems.map((s) => (
               <div key={s.id} style={{ marginBottom: "clamp(12px, 1.4vw, 22px)", breakInside: "avoid" }}>
-                <DisplaySubmission submission={s} board={board} scale={densityScale} />
+                <DisplaySubmission submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
               </div>
             ))}
           </div>
@@ -128,7 +153,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
           <div style={{ display: "grid", gridTemplateColumns: pageItems.length > 4 ? "1fr 1fr" : "1fr", gap: "clamp(12px, 1.4vw, 22px)", height: "100%", alignContent: "start" }}>
             {pageItems.map((s, i) => (
               <div key={s.id} style={{ gridColumn: i === 0 && pageItems.length > 4 ? "1 / -1" : undefined }}>
-                <DisplaySubmission submission={s} board={board} scale={densityScale * (i === 0 ? 1.15 : 1)} />
+                <DisplaySubmission submission={s} board={board} scale={densityScale * (i === 0 ? 1.15 : 1)} facilitator={facFor(s)} />
               </div>
             ))}
           </div>
@@ -143,7 +168,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
             }}
           >
             {pageItems.map((s) => (
-              <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} />
+              <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
             ))}
           </div>
         )}
@@ -168,8 +193,12 @@ export function DisplayCanvas({ room, board, submissions, joinUrl }: Props) {
 
       {/* Focus mode overlay */}
       {focused && (
-        <div style={{ position: "absolute", inset: 0, background: v.dark ? "rgba(8,8,16,.72)" : "rgba(255,255,255,.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(40px, 6vw, 120px)", zIndex: 40 }}>
-          <div style={{ width: "min(1100px, 100%)", maxHeight: "100%" }}>
+        <div
+          onClick={facilitator ? () => facilitator.onFocus(focused.id) : undefined}
+          title={facilitator ? "לחצו להסרה מהמסך" : undefined}
+          style={{ position: "absolute", inset: 0, background: v.dark ? "rgba(8,8,16,.72)" : "rgba(255,255,255,.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(40px, 6vw, 120px)", zIndex: 40, cursor: facilitator ? "zoom-out" : "default" }}
+        >
+          <div style={{ width: "min(1100px, 100%)", maxHeight: "100%" }} onClick={(e) => e.stopPropagation()}>
             <DisplaySubmission submission={focused} board={board} scale={baseScale} focus />
           </div>
         </div>

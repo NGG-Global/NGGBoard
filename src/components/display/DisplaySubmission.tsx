@@ -3,6 +3,15 @@
 import type { Board, Submission } from "@/lib/types";
 import { initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
+import { IconEyeOff, IconMonitor, IconPin, IconTrash } from "@/components/ui/icons";
+
+export interface FacilitatorCardActions {
+  focused: boolean;
+  onFocus: () => void;
+  onPin: () => void;
+  onHide: () => void;
+  onDelete: () => void;
+}
 
 const AVATAR_PALETTE = [
   ["var(--magenta-100)", "var(--magenta-800)"],
@@ -22,10 +31,11 @@ interface Props {
   board: Board;
   scale: number;
   focus?: boolean;
+  facilitator?: FacilitatorCardActions;
 }
 
 /** A single submission rendered for the projector — large, high-contrast. */
-export function DisplaySubmission({ submission, board, scale, focus }: Props) {
+export function DisplaySubmission({ submission, board, scale, focus, facilitator }: Props) {
   const hideIdentity = board.moderation.hide_identity_on_display;
   const anonymous = submission.anonymous || hideIdentity || !submission.display_name;
   const name = anonymous ? "אנונימי" : submission.display_name!;
@@ -36,7 +46,7 @@ export function DisplaySubmission({ submission, board, scale, focus }: Props) {
 
   return (
     <div
-      className="ngg-card-in"
+      className={facilitator ? "ngg-card-in ngg-fac-card" : "ngg-card-in"}
       style={{
         background: "#ffffff",
         borderRadius: "var(--radius-2xl)",
@@ -50,6 +60,25 @@ export function DisplaySubmission({ submission, board, scale, focus }: Props) {
         breakInside: "avoid",
       }}
     >
+      {facilitator && !focus && (
+        <div
+          className="ngg-fac-actions"
+          style={{ position: "absolute", top: 8, insetInlineStart: 8, display: "flex", gap: 6, zIndex: 5 }}
+        >
+          <button className="ngg-fac-btn" data-active={facilitator.focused} onClick={facilitator.onFocus} title={facilitator.focused ? "הסר מהמסך" : "הצג במרכז"} aria-label="הצג במרכז">
+            <IconMonitor size={16} />
+          </button>
+          <button className="ngg-fac-btn" data-active={submission.pinned} onClick={facilitator.onPin} title={submission.pinned ? "בטל הצמדה" : "הצמד"} aria-label="הצמד">
+            <IconPin size={16} />
+          </button>
+          <button className="ngg-fac-btn" onClick={facilitator.onHide} title="הסתר" aria-label="הסתר">
+            <IconEyeOff size={16} />
+          </button>
+          <button className="ngg-fac-btn" data-danger="true" onClick={facilitator.onDelete} title="מחק" aria-label="מחק">
+            <IconTrash size={16} />
+          </button>
+        </div>
+      )}
       {submission.type === "image" && submission.media_url && (
         <div
           style={{
