@@ -4,6 +4,7 @@ import type {
   ActivityEvent,
   ActivityEventType,
   Board,
+  FolderSummary,
   DisplayLayout,
   LiveRoom,
   ModerationActionType,
@@ -148,6 +149,86 @@ class LocalDB {
 
   listProfiles() {
     return [...this.read().profiles];
+  }
+
+  // ---- folders --------------------------------------------------------------
+
+  /**
+   * Folders shown on the dashboard: the persisted registry merged with any
+   * folder names still referenced by boards (so legacy/ad-hoc folders show up
+   * too), each with its live board count. Registry order first, then the rest
+   * alphabetically. Boards link to a folder by name (`Board.folder`).
+   */
+  listFolders(): FolderSummary[] {
+    const db = this.read();
+    const counts = new Map<string, number>();
+    for (const b of db.boards) {
+      if (b.status === "archived") continue;
+      const f = b.folder?.trim();
+      if (f) counts.set(f, (counts.get(f) ?? 0) + 1);
+    }
+    const registry = [...db.folders].sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "he"));
+    const seen = new Set<string>();
+    const out: FolderSummary[] = [];
+    for (const f of registry) {
+      if (seen.has(f.name)) continue;
+      seen.add(f.name);
+      out.push({ name: f.name, count: counts.get(f.name) ?? 0 });
+    }
+    for (const name of [...counts.keys()].sort((a, b) => a.localeCompare(b, "he"))) {
+      if (!seen.has(name)) {
+        seen.add(name);
+        out.push({ name, count: counts.get(name)! });
+      }
+    }
+    return out;
+  }
+
+  /** Number of non-archived boards not assigned to any folder. */
+  countUnfiled(): number {
+    return this.read().boards.filter((b) => b.status !== "archived" && !b.folder?.trim()).length;
+  }
+
+  createFolder(name: string): void {
+    const clean = name.trim();
+    if (!clean) return;
+    const db = this.read();
+    if (db.folders.some((f) => f.name === clean)) return; // idempotent by name
+    const maxSort = db.folders.reduce((m, f) => Math.max(m, f.sort), -1);
+    db.folders.push({
+      id: `folder_${randomId(6)}`,
+      organization_id: this.getOrganization().id,
+      name: clean,
+      sort: maxSort + 1,
+      created_at: new Date().toISOString(),
+    });
+    this.commit({ kind: "board-list" });
+  }
+
+  renameFolder(oldName: string, newName: string): void {
+    const clean = newName.trim();
+    if (!clean || clean === oldName) return;
+    const db = this.read();
+    if (db.folders.some((f) => f.name === clean)) return; // avoid collision
+    const entry = db.folders.find((f) => f.name === oldName);
+    if (entry) entry.name = clean;
+    else db.folders.push({ id: `folder_${randomId(6)}`, organization_id: this.getOrganization().id, name: clean, sort: db.folders.length, created_at: new Date().toISOString() });
+    for (const b of db.boards) if (b.folder === oldName) b.folder = clean;
+    this.commit({ kind: "board-list" });
+  }
+
+  /** Remove a folder; boards inside it become unfiled (never deleted). */
+  deleteFolder(name: string): void {
+    const db = this.read();
+    db.folders = db.folders.filter((f) => f.name !== name);
+    for (const b of db.boards) if (b.folder === name) b.folder = null;
+    this.commit({ kind: "board-list" });
+  }
+
+  /** Move a board into a folder (or out of all folders when null). */
+  setBoardFolder(boardId: string, folder: string | null): void {
+    const clean = folder?.trim() || null;
+    this.updateBoard(boardId, { folder: clean });
   }
 
   // ---- boards ---------------------------------------------------------------

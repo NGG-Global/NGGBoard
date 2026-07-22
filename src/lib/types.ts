@@ -79,6 +79,21 @@ export interface BoardAppearance {
   font_scale: FontScale;
 }
 
+/** A dashboard folder. Boards link to it by `Board.folder` (the folder name). */
+export interface Folder {
+  id: string;
+  organization_id: string;
+  name: string;
+  sort: number;
+  created_at: string;
+}
+
+/** A folder plus how many (non-archived) boards it holds — what the UI renders. */
+export interface FolderSummary {
+  name: string;
+  count: number;
+}
+
 export interface Board {
   id: string;
   organization_id: string;

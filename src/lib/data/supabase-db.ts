@@ -4,6 +4,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import type {
   Board,
   DisplayLayout,
+  Folder,
+  FolderSummary,
   LiveRoom,
   ModerationActionType,
   ParticipantSession,
@@ -24,6 +26,7 @@ import type { Database } from "./seed";
 const emptyDb = (): Database => ({
   organizations: [],
   profiles: [],
+  folders: [],
   boards: [],
   rooms: [],
   submissions: [],
@@ -83,14 +86,16 @@ class SupabaseDB {
     const sb = getSupabase();
     if (!sb || (this.orgHydrated && !force)) return;
     this.orgHydrated = true;
-    const [{ data: profiles }, { data: orgs }, { data: boards }] = await Promise.all([
+    const [{ data: profiles }, { data: orgs }, { data: boards }, { data: folders }] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("organizations").select("*"),
       sb.from("boards").select("*").order("updated_at", { ascending: false }),
+      sb.from("folders").select("*").order("sort", { ascending: true }),
     ]);
     if (profiles) this.cache.profiles = profiles as Profile[];
     if (orgs) this.cache.organizations = orgs as Database["organizations"];
     if (boards) this.cache.boards = (boards as Board[]).map(normalizeBoard);
+    if (folders) this.cache.folders = folders as Folder[];
     this.emit("board-list");
     this.subscribeBoardList();
   }
@@ -114,6 +119,14 @@ class SupabaseDB {
           this.cache.boards = this.cache.boards.filter((b) => b.id !== (p.old as Board).id);
         } else if (p.new && (p.new as Board).id) {
           this.upsert(this.cache.boards, normalizeBoard(p.new as Board));
+        }
+        this.emit("board-list");
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "folders" }, (p) => {
+        if (p.eventType === "DELETE" && p.old && (p.old as Folder).id) {
+          this.cache.folders = this.cache.folders.filter((f) => f.id !== (p.old as Folder).id);
+        } else if (p.new && (p.new as Folder).id) {
+          this.upsert(this.cache.folders, p.new as Folder);
         }
         this.emit("board-list");
       })
@@ -321,6 +334,75 @@ class SupabaseDB {
   listProfiles() {
     void this.hydrateOrg();
     return [...this.cache.profiles];
+  }
+
+  // ---- folders --------------------------------------------------------------
+  listFolders(): FolderSummary[] {
+    void this.hydrateOrg();
+    const counts = new Map<string, number>();
+    for (const b of this.cache.boards) {
+      if (b.organization_id === "public" || b.status === "archived") continue;
+      const f = b.folder?.trim();
+      if (f) counts.set(f, (counts.get(f) ?? 0) + 1);
+    }
+    const registry = [...this.cache.folders].sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "he"));
+    const seen = new Set<string>();
+    const out: FolderSummary[] = [];
+    for (const f of registry) {
+      if (seen.has(f.name)) continue;
+      seen.add(f.name);
+      out.push({ name: f.name, count: counts.get(f.name) ?? 0 });
+    }
+    for (const name of [...counts.keys()].sort((a, b) => a.localeCompare(b, "he"))) {
+      if (!seen.has(name)) { seen.add(name); out.push({ name, count: counts.get(name)! }); }
+    }
+    return out;
+  }
+  countUnfiled(): number {
+    return this.cache.boards.filter((b) => b.organization_id !== "public" && b.status !== "archived" && !b.folder?.trim()).length;
+  }
+  createFolder(name: string): void {
+    const clean = name.trim();
+    if (!clean || this.cache.folders.some((f) => f.name === clean)) return;
+    const maxSort = this.cache.folders.reduce((m, f) => Math.max(m, f.sort), -1);
+    const folder: Folder = {
+      id: uuid(),
+      organization_id: this.currentOrgId(),
+      name: clean,
+      sort: maxSort + 1,
+      created_at: new Date().toISOString(),
+    };
+    this.cache.folders.push(folder);
+    this.emit("board-list");
+    const sb = getSupabase();
+    void sb?.from("folders").insert(folder).then(({ error }) => error && console.warn("createFolder", error.message));
+  }
+  renameFolder(oldName: string, newName: string): void {
+    const clean = newName.trim();
+    if (!clean || clean === oldName || this.cache.folders.some((f) => f.name === clean)) return;
+    for (const f of this.cache.folders) if (f.name === oldName) f.name = clean;
+    for (const b of this.cache.boards) if (b.folder === oldName) b.folder = clean;
+    this.emit("board-list");
+    const sb = getSupabase();
+    const org = this.currentOrgId();
+    void sb?.from("folders").update({ name: clean }).eq("organization_id", org).eq("name", oldName)
+      .then(({ error }) => error && console.warn("renameFolder", error.message));
+    void sb?.from("boards").update({ folder: clean }).eq("organization_id", org).eq("folder", oldName)
+      .then(({ error }) => error && console.warn("renameFolder boards", error.message));
+  }
+  deleteFolder(name: string): void {
+    this.cache.folders = this.cache.folders.filter((f) => f.name !== name);
+    for (const b of this.cache.boards) if (b.folder === name) b.folder = null;
+    this.emit("board-list");
+    const sb = getSupabase();
+    const org = this.currentOrgId();
+    void sb?.from("folders").delete().eq("organization_id", org).eq("name", name)
+      .then(({ error }) => error && console.warn("deleteFolder", error.message));
+    void sb?.from("boards").update({ folder: null }).eq("organization_id", org).eq("folder", name)
+      .then(({ error }) => error && console.warn("deleteFolder boards", error.message));
+  }
+  setBoardFolder(boardId: string, folder: string | null): void {
+    this.updateBoard(boardId, { folder: folder?.trim() || null });
   }
 
   // ---- boards ---------------------------------------------------------------

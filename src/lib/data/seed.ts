@@ -1,6 +1,7 @@
 import type {
   ActivityEvent,
   Board,
+  Folder,
   LiveRoom,
   ModerationAction,
   Organization,
@@ -13,6 +14,7 @@ import { DEFAULT_IMAGE_SIZE_LIMIT_MB, DEFAULT_TEXT_CHAR_LIMIT } from "@/lib/cons
 export interface Database {
   organizations: Organization[];
   profiles: Profile[];
+  folders: Folder[];
   boards: Board[];
   rooms: LiveRoom[];
   submissions: Submission[];
@@ -342,5 +344,13 @@ export function buildSeed(): Database {
 
   const moderation: ModerationAction[] = [];
 
-  return { organizations: [org], profiles, boards, rooms, submissions, participants, activity, moderation };
+  // Folder registry — matches the folders the seed boards already use, so they
+  // have a stable order and demonstrate the (persisted) empty-folder capability.
+  const folders: Folder[] = [
+    { id: "folder_workshops", organization_id: ORG_ID, name: "סדנאות", sort: 0, created_at: iso(30 * DAY) },
+    { id: "folder_events", organization_id: ORG_ID, name: "אירועים", sort: 1, created_at: iso(30 * DAY) },
+    { id: "folder_dev", organization_id: ORG_ID, name: "צוות פיתוח", sort: 2, created_at: iso(30 * DAY) },
+  ];
+
+  return { organizations: [org], profiles, folders, boards, rooms, submissions, participants, activity, moderation };
 }

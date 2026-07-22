@@ -9,6 +9,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
 import { BoardStatusBadge, Badge, ConfirmDialog, useToast } from "@/components/ui";
 import { BoardThumbnail } from "./BoardThumbnail";
+import { MoveToFolderDialog } from "./MoveToFolderDialog";
 
 export function BoardCard({ board, onActivate }: { board: Board; onActivate: (board: Board) => void }) {
   const router = useRouter();
@@ -16,6 +17,7 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [moveFolder, setMoveFolder] = useState(false);
   const shared = board.created_by !== CURRENT_USER_ID;
   const owner = db.getProfile(board.created_by);
   const activeRoom = useLiveQuery("board-list", () => db.getActiveRoomForBoard(board.id));
@@ -105,6 +107,9 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
                     </MenuItem>
                   )}
                   <MenuItem onClick={() => router.push(`/app/boards/${board.id}/edit`)}>עריכה</MenuItem>
+                  <MenuItem onClick={() => { closeMenu(); setMoveFolder(true); }}>
+                    {board.folder ? `תיקייה: ${board.folder}` : "העבר לתיקייה"}
+                  </MenuItem>
                   {board.status === "ready" && !activeRoom && (
                     <MenuItem
                       accent
@@ -182,6 +187,13 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
         danger
         onConfirm={() => { db.deleteBoard(board.id); setConfirmDelete(false); toast.show("הלוח נמחק לצמיתות"); }}
         onCancel={() => setConfirmDelete(false)}
+      />
+      <MoveToFolderDialog
+        open={moveFolder}
+        boardId={board.id}
+        currentFolder={board.folder}
+        boardName={board.internal_name}
+        onClose={() => setMoveFolder(false)}
       />
     </div>
   );

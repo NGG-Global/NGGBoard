@@ -9,7 +9,9 @@ import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { db } from "@/lib/data";
 import {
   IconArchive,
+  IconFolder,
   IconGrid,
+  IconPlus,
   IconSettings,
   IconTemplate,
   IconUsers,
@@ -26,13 +28,32 @@ const NAV: { key: DashView; label: string; href: string; icon: React.ReactNode }
   { key: "archive", label: "ארכיון", href: "/app/boards?view=archive", icon: <IconArchive size={15} /> },
 ];
 
-export function AppShell({ current, children }: { current: DashView; children: React.ReactNode }) {
+export function AppShell({
+  current,
+  activeFolder = null,
+  children,
+}: {
+  current: DashView;
+  /** Folder name currently filtered on the dashboard (highlights the sidebar). */
+  activeFolder?: string | null;
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const mounted = useMounted();
   // Reactive: re-reads once the profile hydrates (Supabase) or on any change.
   const profile = useLiveQuery("board-list", () => (mounted ? getCurrentProfile() : null));
   const activeCount = useLiveQuery("board-list", () => db.listActiveRooms().length);
+  const folders = useLiveQuery("board-list", () => db.listFolders());
   const [menuOpen, setMenuOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newFolder, setNewFolder] = useState("");
+
+  function createFolder() {
+    const clean = newFolder.trim();
+    if (clean) db.createFolder(clean);
+    setNewFolder("");
+    setAdding(false);
+  }
 
   return (
     <div
@@ -104,6 +125,73 @@ export function AppShell({ current, children }: { current: DashView; children: R
             );
           })}
         </nav>
+
+        {/* Folders */}
+        <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px" }}>
+            <span style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)", letterSpacing: ".04em", flex: 1 }}>
+              תיקיות
+            </span>
+            <button
+              onClick={() => setAdding((v) => !v)}
+              aria-label="תיקייה חדשה"
+              title="תיקייה חדשה"
+              className="ngg-hover"
+              style={{ border: "none", background: "transparent", color: "var(--text-subtle)", cursor: "pointer", padding: 3, borderRadius: "var(--radius-sm)", display: "flex" }}
+            >
+              <IconPlus size={14} />
+            </button>
+          </div>
+
+          {adding && (
+            <input
+              autoFocus
+              value={newFolder}
+              onChange={(e) => setNewFolder(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") createFolder(); if (e.key === "Escape") { setAdding(false); setNewFolder(""); } }}
+              onBlur={createFolder}
+              placeholder="שם התיקייה…"
+              className="ngg-focusable"
+              style={{ margin: "0 8px 6px", padding: "7px 9px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", fontFamily: "var(--font-sans)", color: "var(--text)", background: "var(--surface)", outline: "none" }}
+            />
+          )}
+
+          {folders.length === 0 && !adding && (
+            <div style={{ padding: "2px 10px 4px", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", lineHeight: "var(--leading-snug)" }}>
+              צרו תיקייה כדי לארגן את הלוחות
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 240, overflowY: "auto" }}>
+            {folders.map((f) => {
+              const active = current === "all" && activeFolder === f.name;
+              return (
+                <Link
+                  key={f.name}
+                  href={`/app/boards?view=all&folder=${encodeURIComponent(f.name)}`}
+                  aria-current={active ? "page" : undefined}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-lg)",
+                    background: active ? "var(--accent-soft)" : "transparent",
+                    color: active ? "var(--accent-text)" : "var(--text-muted)",
+                    fontSize: "var(--text-sm)",
+                    fontWeight: active ? "var(--weight-bold)" : "var(--weight-semibold)",
+                  }}
+                >
+                  <IconFolder size={15} />
+                  <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                  {f.count > 0 && (
+                    <span style={{ fontSize: "var(--text-2xs)", color: active ? "var(--accent-text)" : "var(--text-subtle)" }}>{f.count}</span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
 
         <div style={{ flex: 1 }} />
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { type CSSProperties, Suspense, useMemo, useState } from "react";
 import type { Board } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
@@ -11,8 +11,8 @@ import { AppShell, type DashView } from "@/components/app/AppShell";
 import { BoardCard } from "@/components/app/BoardCard";
 import { BoardThumbnail } from "@/components/app/BoardThumbnail";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
-import { Button, ConfirmDialog, EmptyState, LiveDot, useToast } from "@/components/ui";
-import { IconGrid, IconMonitor, IconSearch, IconTemplate } from "@/components/ui/icons";
+import { Button, ConfirmDialog, EmptyState, Input, LiveDot, Modal, useToast } from "@/components/ui";
+import { IconFolder, IconGrid, IconMonitor, IconSearch, IconTemplate } from "@/components/ui/icons";
 
 const PAGE_TITLES: Record<DashView, string> = {
   all: "הלוחות שלי",
@@ -28,12 +28,14 @@ function DashboardInner() {
   const toast = useToast();
   const params = useSearchParams();
   const view = (params.get("view") as DashView) || "all";
+  const folder = params.get("folder");
   const [query, setQuery] = useState("");
   const [activateBoard, setActivateBoard] = useState<Board | null>(null);
   const [endRoomId, setEndRoomId] = useState<string | null>(null);
 
   const boards = useLiveQuery("board-list", () => db.listBoards());
   const activeRooms = useLiveQuery("board-list", () => db.listActiveRooms());
+  const folders = useLiveQuery("board-list", () => db.listFolders());
 
   const q = query.trim();
   const pool = useMemo(() => {
@@ -41,27 +43,49 @@ function DashboardInner() {
     if (view === "all") list = list.filter((b) => b.status !== "archived");
     else if (view === "shared") list = list.filter((b) => b.created_by !== CURRENT_USER_ID);
     else if (view === "archive") list = list.filter((b) => b.status === "archived");
+    if (view === "all" && folder) list = list.filter((b) => (b.folder ?? null) === folder);
     if (q) list = list.filter((b) => b.internal_name.includes(q) || b.public_title.includes(q));
     return list;
-  }, [boards, view, q]);
+  }, [boards, view, folder, q]);
+
+  // Grouped view: the default "all" dashboard (no folder filter, no search) is
+  // organised into folder sections, with unfiled boards last.
+  const grouped = view === "all" && !folder && !q;
+  const groups = useMemo(() => {
+    if (!grouped) return [];
+    const nonArchived = boards.filter((b) => b.status !== "archived");
+    const named = folders
+      .map((f) => ({ name: f.name, boards: nonArchived.filter((b) => b.folder === f.name) }))
+      .filter((g) => g.boards.length > 0);
+    const unfiled = nonArchived.filter((b) => !b.folder?.trim());
+    return unfiled.length > 0 ? [...named, { name: null as string | null, boards: unfiled }] : named;
+  }, [grouped, boards, folders]);
 
   const recent = useMemo(
     () => boards.filter((b) => b.status !== "archived").slice(0, 3),
     [boards],
   );
 
-  const showLive = (view === "all" || view === "active") && !q && activeRooms.length > 0;
-  const showRecent = view === "all" && !q && recent.length > 0;
+  const showLive = ((view === "all" && !folder) || view === "active") && !q && activeRooms.length > 0;
+  const showRecent = view === "all" && !folder && !q && recent.length > 0;
   const showGrid = view !== "templates" && view !== "active";
 
   return (
-    <AppShell current={view}>
+    <AppShell current={view} activeFolder={folder}>
       <div style={{ padding: "26px 30px 40px", maxWidth: 1240, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22, flexWrap: "wrap" }}>
-          <h1 style={{ margin: 0, fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)" }}>
-            {PAGE_TITLES[view]}
+          <h1 style={{ margin: 0, fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)", display: "flex", alignItems: "center", gap: 8 }}>
+            {view === "all" && folder ? (
+              <>
+                <IconFolder size={22} style={{ color: "var(--accent-text)" }} />
+                {folder}
+              </>
+            ) : (
+              PAGE_TITLES[view]
+            )}
           </h1>
+          {view === "all" && folder && <FolderMenu folder={folder} onDone={() => router.push("/app/boards?view=all")} />}
           <div style={{ flex: 1 }} />
           <label
             style={{
@@ -227,11 +251,34 @@ function DashboardInner() {
           </section>
         )}
 
-        {/* Grid */}
-        {showGrid && (
+        {/* Grid — grouped by folder in the default view, flat when filtered/searching. */}
+        {showGrid && grouped && groups.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+            {groups.map((g) => (
+              <section key={g.name ?? "__unfiled"}>
+                <SectionLabel>
+                  {g.name ? (
+                    <Link href={`/app/boards?view=all&folder=${encodeURIComponent(g.name)}`} style={{ color: "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <IconFolder size={13} /> {g.name} · {g.boards.length}
+                    </Link>
+                  ) : (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>ללא תיקייה · {g.boards.length}</span>
+                  )}
+                </SectionLabel>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
+                  {g.boards.map((board) => (
+                    <BoardCard key={board.id} board={board} onActivate={setActivateBoard} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+
+        {showGrid && !(grouped && groups.length > 0) && (
           <section>
             <SectionLabel>
-              {view === "all" ? (q ? "תוצאות חיפוש" : "כל הלוחות") : PAGE_TITLES[view]}
+              {view === "all" ? (folder ? `לוחות בתיקייה` : q ? "תוצאות חיפוש" : "כל הלוחות") : PAGE_TITLES[view]}
             </SectionLabel>
             {pool.length === 0 ? (
               <EmptyState
@@ -239,19 +286,23 @@ function DashboardInner() {
                 title={
                   q
                     ? "לא נמצאו לוחות שמתאימים לחיפוש"
-                    : view === "archive"
-                      ? "הארכיון ריק"
-                      : view === "shared"
-                        ? "עדיין לא שותפו איתכם לוחות"
-                        : "אין כאן לוחות עדיין"
+                    : folder
+                      ? "אין לוחות בתיקייה הזו"
+                      : view === "archive"
+                        ? "הארכיון ריק"
+                        : view === "shared"
+                          ? "עדיין לא שותפו איתכם לוחות"
+                          : "אין כאן לוחות עדיין"
                 }
                 description={
-                  view === "all" && !q
-                    ? "צרו את הלוח הראשון שלכם — הגדירו כותרת, עיצוב וכללי השתתפות, ואז הפעילו חדר חי בלחיצה."
-                    : undefined
+                  folder
+                    ? 'העבירו לוחות לתיקייה דרך תפריט "⋯" שעל הלוח, או צרו לוח חדש.'
+                    : view === "all" && !q
+                      ? "צרו את הלוח הראשון שלכם — הגדירו כותרת, עיצוב וכללי השתתפות, ואז הפעילו חדר חי בלחיצה."
+                      : undefined
                 }
                 action={
-                  view === "all" && !q ? (
+                  (folder || (view === "all" && !q)) ? (
                     <Button variant="primary" onClick={() => router.push("/app/boards/new")}>
                       צרו לוח חדש
                     </Button>
@@ -281,6 +332,76 @@ function DashboardInner() {
       />
     </AppShell>
   );
+}
+
+/** Rename / delete controls for the currently-open folder. */
+function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [name, setName] = useState(folder);
+
+  function doRename() {
+    const clean = name.trim();
+    if (clean && clean !== folder) {
+      db.renameFolder(folder, clean);
+      setRenaming(false);
+      router.push(`/app/boards?view=all&folder=${encodeURIComponent(clean)}`);
+      toast.show("שם התיקייה עודכן");
+    } else {
+      setRenaming(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        aria-label="פעולות תיקייה"
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+        className="ngg-hover"
+        style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)", cursor: "pointer", padding: "5px 9px", borderRadius: "var(--radius-md)", fontSize: "var(--text-md)", fontWeight: "var(--weight-black)", lineHeight: 1 }}
+      >
+        ⋯
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
+          <div role="menu" style={{ position: "absolute", insetInlineStart: 0, top: 34, zIndex: 30, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", padding: 5, minWidth: 150, display: "flex", flexDirection: "column" }}>
+            <button role="menuitem" onClick={() => { setOpen(false); setName(folder); setRenaming(true); }} className="ngg-hover" style={menuBtn(false)}>שינוי שם</button>
+            <button role="menuitem" onClick={() => { setOpen(false); setConfirmDelete(true); }} className="ngg-hover" style={menuBtn(true)}>מחיקת תיקייה</button>
+          </div>
+        </>
+      )}
+
+      <Modal open={renaming} onClose={() => setRenaming(false)} width={360}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <h2 style={{ margin: 0, fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>שינוי שם התיקייה</h2>
+          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="שם התיקייה" autoFocus onKeyDown={(e) => e.key === "Enter" && doRename()} />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Button variant="ghost" onClick={() => setRenaming(false)}>ביטול</Button>
+            <Button variant="primary" disabled={!name.trim()} onClick={doRename}>שמירה</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`למחוק את התיקייה "${folder}"?`}
+        description="התיקייה תימחק. הלוחות שבתוכה יישארו — הם פשוט לא ישויכו לתיקייה. אפשר לשייך אותם מחדש בכל עת."
+        confirmLabel="מחק תיקייה"
+        danger
+        onConfirm={() => { db.deleteFolder(folder); setConfirmDelete(false); onDone(); toast.show("התיקייה נמחקה"); }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </div>
+  );
+}
+
+function menuBtn(danger: boolean): CSSProperties {
+  return { border: "none", background: "transparent", fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", color: danger ? "var(--danger)" : "var(--text)", padding: "8px 10px", borderRadius: "var(--radius-md)", cursor: "pointer", textAlign: "start" };
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
