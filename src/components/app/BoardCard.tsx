@@ -10,6 +10,7 @@ import { formatAgo } from "@/lib/utils";
 import { BoardStatusBadge, Badge, ConfirmDialog, useToast } from "@/components/ui";
 import { BoardThumbnail } from "./BoardThumbnail";
 import { MoveToFolderDialog } from "./MoveToFolderDialog";
+import { BOARD_DND_MIME, useDashDnd } from "./dnd";
 
 export function BoardCard({ board, onActivate }: { board: Board; onActivate: (board: Board) => void }) {
   const router = useRouter();
@@ -21,12 +22,23 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
   const shared = board.created_by !== CURRENT_USER_ID;
   const owner = db.getProfile(board.created_by);
   const activeRoom = useLiveQuery("board-list", () => db.getActiveRoomForBoard(board.id));
+  const dnd = useDashDnd();
+  const dragging = dnd.draggingId === board.id;
 
   const closeMenu = () => setMenuOpen(false);
 
   return (
     <div
       className="ngg-card-hover"
+      // Drag the card onto a folder in the sidebar to file it. The ⋯ menu is the
+      // pointer-free fallback (touch / keyboard).
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(BOARD_DND_MIME, board.id);
+        e.dataTransfer.effectAllowed = "move";
+        dnd.start(board.id);
+      }}
+      onDragEnd={() => dnd.end()}
       style={{
         position: "relative",
         background: "var(--surface)",
@@ -35,15 +47,18 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
         boxShadow: "var(--shadow-xs)",
         display: "flex",
         flexDirection: "column",
+        cursor: "grab",
+        opacity: dragging ? 0.5 : 1,
       }}
     >
-      <Link href={`/app/boards/${board.id}`} aria-label={`פתח את ${board.internal_name}`}>
+      <Link href={`/app/boards/${board.id}`} aria-label={`פתח את ${board.internal_name}`} draggable={false}>
         <BoardThumbnail board={board} />
       </Link>
       <div style={{ padding: "11px 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
           <Link
             href={`/app/boards/${board.id}`}
+            draggable={false}
             style={{
               fontSize: "var(--text-sm)",
               fontWeight: "var(--weight-bold)",

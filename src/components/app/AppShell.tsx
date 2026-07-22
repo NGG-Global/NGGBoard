@@ -16,7 +16,8 @@ import {
   IconTemplate,
   IconUsers,
 } from "@/components/ui/icons";
-import { LiveDot } from "@/components/ui";
+import { LiveDot, useToast } from "@/components/ui";
+import { BOARD_DND_MIME, DashDndProvider, useDashDnd } from "./dnd";
 
 export type DashView = "all" | "shared" | "active" | "templates" | "archive" | "admin";
 
@@ -43,19 +44,10 @@ export function AppShell({
   // Reactive: re-reads once the profile hydrates (Supabase) or on any change.
   const profile = useLiveQuery("board-list", () => (mounted ? getCurrentProfile() : null));
   const activeCount = useLiveQuery("board-list", () => db.listActiveRooms().length);
-  const folders = useLiveQuery("board-list", () => db.listFolders());
   const [menuOpen, setMenuOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [newFolder, setNewFolder] = useState("");
-
-  function createFolder() {
-    const clean = newFolder.trim();
-    if (clean) db.createFolder(clean);
-    setNewFolder("");
-    setAdding(false);
-  }
 
   return (
+    <DashDndProvider>
     <div
       dir="rtl"
       style={{
@@ -126,72 +118,7 @@ export function AppShell({
           })}
         </nav>
 
-        {/* Folders */}
-        <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 2 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px" }}>
-            <span style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)", letterSpacing: ".04em", flex: 1 }}>
-              תיקיות
-            </span>
-            <button
-              onClick={() => setAdding((v) => !v)}
-              aria-label="תיקייה חדשה"
-              title="תיקייה חדשה"
-              className="ngg-hover"
-              style={{ border: "none", background: "transparent", color: "var(--text-subtle)", cursor: "pointer", padding: 3, borderRadius: "var(--radius-sm)", display: "flex" }}
-            >
-              <IconPlus size={14} />
-            </button>
-          </div>
-
-          {adding && (
-            <input
-              autoFocus
-              value={newFolder}
-              onChange={(e) => setNewFolder(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") createFolder(); if (e.key === "Escape") { setAdding(false); setNewFolder(""); } }}
-              onBlur={createFolder}
-              placeholder="שם התיקייה…"
-              className="ngg-focusable"
-              style={{ margin: "0 8px 6px", padding: "7px 9px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", fontFamily: "var(--font-sans)", color: "var(--text)", background: "var(--surface)", outline: "none" }}
-            />
-          )}
-
-          {folders.length === 0 && !adding && (
-            <div style={{ padding: "2px 10px 4px", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", lineHeight: "var(--leading-snug)" }}>
-              צרו תיקייה כדי לארגן את הלוחות
-            </div>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 240, overflowY: "auto" }}>
-            {folders.map((f) => {
-              const active = current === "all" && activeFolder === f.name;
-              return (
-                <Link
-                  key={f.name}
-                  href={`/app/boards?view=all&folder=${encodeURIComponent(f.name)}`}
-                  aria-current={active ? "page" : undefined}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 10px",
-                    borderRadius: "var(--radius-lg)",
-                    background: active ? "var(--accent-soft)" : "transparent",
-                    color: active ? "var(--accent-text)" : "var(--text-muted)",
-                    fontSize: "var(--text-sm)",
-                    fontWeight: active ? "var(--weight-bold)" : "var(--weight-semibold)",
-                  }}
-                >
-                  <IconFolder size={15} />
-                  <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
-                  {f.count > 0 && (
-                    <span style={{ fontSize: "var(--text-2xs)", color: active ? "var(--accent-text)" : "var(--text-subtle)" }}>{f.count}</span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+        <FolderNav current={current} activeFolder={activeFolder} />
 
         <div style={{ flex: 1 }} />
 
@@ -310,6 +237,142 @@ export function AppShell({
       </aside>
 
       <main style={{ flex: 1, minWidth: 0, overflowX: "hidden" }}>{children}</main>
+    </div>
+    </DashDndProvider>
+  );
+}
+
+/**
+ * The sidebar "folders" section: create, filter, and drop boards onto folders.
+ * Lives in its own component so it can consume the drag context provided above.
+ */
+function FolderNav({ current, activeFolder }: { current: DashView; activeFolder: string | null }) {
+  const toast = useToast();
+  const dnd = useDashDnd();
+  const folders = useLiveQuery("board-list", () => db.listFolders());
+  const [adding, setAdding] = useState(false);
+  const [newFolder, setNewFolder] = useState("");
+  const [dropTarget, setDropTarget] = useState<string | null>(null); // folder name, or "__unfiled"
+
+  function createFolder() {
+    const clean = newFolder.trim();
+    if (clean) db.createFolder(clean);
+    setNewFolder("");
+    setAdding(false);
+  }
+
+  function dropBoard(e: React.DragEvent, folder: string | null) {
+    e.preventDefault();
+    const id = e.dataTransfer.getData(BOARD_DND_MIME) || dnd.draggingId;
+    setDropTarget(null);
+    dnd.end();
+    if (!id) return;
+    const before = db.getBoard(id);
+    if (before && (before.folder ?? null) === folder) return; // no-op
+    db.setBoardFolder(id, folder);
+    toast.show(
+      folder ? `הלוח הועבר לתיקייה "${folder}"` : "הלוח הוסר מהתיקייה",
+      before ? () => db.setBoardFolder(id, before.folder) : undefined,
+    );
+  }
+
+  const dragging = !!dnd.draggingId;
+
+  return (
+    <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px" }}>
+        <span style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)", letterSpacing: ".04em", flex: 1 }}>
+          תיקיות
+        </span>
+        <button
+          onClick={() => setAdding((v) => !v)}
+          aria-label="תיקייה חדשה"
+          title="תיקייה חדשה"
+          className="ngg-hover"
+          style={{ border: "none", background: "transparent", color: "var(--text-subtle)", cursor: "pointer", padding: 3, borderRadius: "var(--radius-sm)", display: "flex" }}
+        >
+          <IconPlus size={14} />
+        </button>
+      </div>
+
+      {adding && (
+        <input
+          autoFocus
+          value={newFolder}
+          onChange={(e) => setNewFolder(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") createFolder(); if (e.key === "Escape") { setAdding(false); setNewFolder(""); } }}
+          onBlur={createFolder}
+          placeholder="שם התיקייה…"
+          className="ngg-focusable"
+          style={{ margin: "0 8px 6px", padding: "7px 9px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", fontFamily: "var(--font-sans)", color: "var(--text)", background: "var(--surface)", outline: "none" }}
+        />
+      )}
+
+      {folders.length === 0 && !adding && !dragging && (
+        <div style={{ padding: "2px 10px 4px", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", lineHeight: "var(--leading-snug)" }}>
+          צרו תיקייה כדי לארגן את הלוחות — או גררו לוח לכאן
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
+        {folders.map((f) => {
+          const active = current === "all" && activeFolder === f.name;
+          const over = dropTarget === f.name;
+          return (
+            <Link
+              key={f.name}
+              href={`/app/boards?view=all&folder=${encodeURIComponent(f.name)}`}
+              aria-current={active ? "page" : undefined}
+              onDragOver={(e) => { if (dragging) { e.preventDefault(); setDropTarget(f.name); } }}
+              onDragLeave={() => setDropTarget((t) => (t === f.name ? null : t))}
+              onDrop={(e) => dropBoard(e, f.name)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 10px",
+                borderRadius: "var(--radius-lg)",
+                background: over ? "var(--accent)" : active ? "var(--accent-soft)" : "transparent",
+                color: over ? "#fff" : active ? "var(--accent-text)" : "var(--text-muted)",
+                outline: over ? "2px solid var(--accent)" : "none",
+                transition: "background .12s",
+                fontSize: "var(--text-sm)",
+                fontWeight: active || over ? "var(--weight-bold)" : "var(--weight-semibold)",
+              }}
+            >
+              <IconFolder size={15} />
+              <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+              {f.count > 0 && (
+                <span style={{ fontSize: "var(--text-2xs)", color: over ? "#fff" : active ? "var(--accent-text)" : "var(--text-subtle)" }}>{f.count}</span>
+              )}
+            </Link>
+          );
+        })}
+
+        {/* Unfile drop target — only while dragging. */}
+        {dragging && (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDropTarget("__unfiled"); }}
+            onDragLeave={() => setDropTarget((t) => (t === "__unfiled" ? null : t))}
+            onDrop={(e) => dropBoard(e, null)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              marginTop: 2,
+              borderRadius: "var(--radius-lg)",
+              border: "1.5px dashed var(--border-strong)",
+              background: dropTarget === "__unfiled" ? "var(--accent)" : "transparent",
+              color: dropTarget === "__unfiled" ? "#fff" : "var(--text-subtle)",
+              fontSize: "var(--text-xs)",
+              fontWeight: "var(--weight-semibold)",
+            }}
+          >
+            הסרה מתיקייה
+          </div>
+        )}
+      </div>
     </div>
   );
 }
