@@ -55,13 +55,25 @@
   to { transform: rotate(360deg); }
 }
 
+@keyframes ngg-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .ngg-pulse-dot { animation: ngg-pulse-dot 1.8s ease-out infinite; }
 .ngg-pulse-dot-light { animation: ngg-pulse-dot-light 1.6s ease-out infinite; }
 .ngg-card-in { animation: ngg-card-in 0.5s cubic-bezier(0.2, 0.7, 0.3, 1); }
 .ngg-fade-up { animation: ngg-fade-up 0.35s var(--ease-out) both; }
+.ngg-skeleton {
+  background: linear-gradient(90deg, var(--surface-sunken) 25%, var(--border) 37%, var(--surface-sunken) 63%);
+  background-size: 200% 100%;
+  animation: ngg-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ngg-pulse-dot, .ngg-pulse-dot-light, .ngg-card-in, .ngg-fade-up { animation: none !important; }
+  .ngg-skeleton { animation: none !important; }
 }
 
 /* Board detail: stack the two columns on narrow screens */

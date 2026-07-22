@@ -5,16 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { getCurrentProfile, signOut } from "@/lib/auth";
-import { useLiveQuery, useMounted } from "@/lib/hooks";
+import { useLiveQuery, useMediaQuery, useMounted } from "@/lib/hooks";
 import { db } from "@/lib/data";
 import {
   IconArchive,
   IconFolder,
   IconGrid,
+  IconMenu,
   IconPlus,
   IconSettings,
   IconTemplate,
   IconUsers,
+  IconX,
 } from "@/components/ui/icons";
 import { LiveDot, useToast } from "@/components/ui";
 import { BOARD_DND_MIME, DashDndProvider, useDashDnd } from "./dnd";
@@ -45,6 +47,8 @@ export function AppShell({
   const profile = useLiveQuery("board-list", () => (mounted ? getCurrentProfile() : null));
   const activeCount = useLiveQuery("board-list", () => db.listActiveRooms().length);
   const [menuOpen, setMenuOpen] = useState(false);
+  const mobile = useMediaQuery("(max-width: 860px)");
+  const [navOpen, setNavOpen] = useState(false);
 
   return (
     <DashDndProvider>
@@ -58,20 +62,46 @@ export function AppShell({
         color: "var(--text)",
       }}
     >
+      {/* Mobile backdrop */}
+      {mobile && navOpen && (
+        <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(8,8,16,.45)", zIndex: 85 }} />
+      )}
+
       <aside
+        // On mobile the sidebar becomes a right-anchored slide-in drawer.
+        onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) setNavOpen(false); }}
         style={{
-          width: 216,
+          width: mobile ? 268 : 216,
           flex: "none",
           background: "var(--surface)",
           borderInlineEnd: "1px solid var(--border)",
           display: "flex",
           flexDirection: "column",
           padding: "18px 12px",
-          position: "sticky",
-          top: 0,
-          height: "100vh",
+          ...(mobile
+            ? {
+                position: "fixed",
+                top: 0,
+                right: 0,
+                height: "100vh",
+                zIndex: 90,
+                transform: navOpen ? "translateX(0)" : "translateX(100%)",
+                transition: "transform .25s var(--ease-out, ease)",
+                boxShadow: navOpen ? "var(--shadow-xl)" : "none",
+              }
+            : { position: "sticky", top: 0, height: "100vh" }),
         }}
       >
+        {mobile && (
+          <button
+            onClick={() => setNavOpen(false)}
+            aria-label="סגירת התפריט"
+            className="ngg-hover"
+            style={{ position: "absolute", top: 14, insetInlineStart: 12, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", padding: 4, borderRadius: "var(--radius-sm)", display: "flex" }}
+          >
+            <IconX size={18} />
+          </button>
+        )}
         <Link href="/app/boards?view=all" aria-label="NGG Boards — דף הבית" style={{ alignSelf: "flex-start", margin: "0 8px 22px" }}>
           <Image src="/brand/ngg-logo.png" alt="NGG" width={80} height={26} style={{ height: 26, width: "auto" }} priority />
         </Link>
@@ -236,7 +266,28 @@ export function AppShell({
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, overflowX: "hidden" }}>{children}</main>
+      <main style={{ flex: 1, minWidth: 0, overflowX: "hidden" }}>
+        {mobile && (
+          <div style={{ position: "sticky", top: 0, zIndex: 40, display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+            <button
+              onClick={() => setNavOpen(true)}
+              aria-label="פתיחת התפריט"
+              className="ngg-hover"
+              style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", padding: "7px 9px", borderRadius: "var(--radius-md)", display: "flex" }}
+            >
+              <IconMenu size={18} />
+            </button>
+            <Image src="/brand/ngg-logo.png" alt="NGG" width={68} height={22} style={{ height: 22, width: "auto" }} />
+            {activeCount > 0 && (
+              <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 9px", borderRadius: "var(--radius-pill)" }}>
+                <LiveDot />
+                {activeCount} פעיל
+              </span>
+            )}
+          </div>
+        )}
+        {children}
+      </main>
     </div>
     </DashDndProvider>
   );
@@ -253,6 +304,17 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
   const [adding, setAdding] = useState(false);
   const [newFolder, setNewFolder] = useState("");
   const [dropTarget, setDropTarget] = useState<string | null>(null); // folder name, or "__unfiled"
+  const [draggingFolder, setDraggingFolder] = useState<string | null>(null);
+
+  function reorder(targetName: string) {
+    if (!draggingFolder || draggingFolder === targetName) return;
+    const order = folders.map((f) => f.name).filter((n) => n !== draggingFolder);
+    const idx = order.indexOf(targetName);
+    order.splice(idx < 0 ? order.length : idx, 0, draggingFolder);
+    db.reorderFolders(order);
+    setDraggingFolder(null);
+    setDropTarget(null);
+  }
 
   function createFolder() {
     const clean = newFolder.trim();
@@ -323,9 +385,16 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
               key={f.name}
               href={`/app/boards?view=all&folder=${encodeURIComponent(f.name)}`}
               aria-current={active ? "page" : undefined}
-              onDragOver={(e) => { if (dragging) { e.preventDefault(); setDropTarget(f.name); } }}
+              // Draggable to reorder; also a drop target for board filing.
+              draggable
+              onDragStart={(e) => { setDraggingFolder(f.name); e.dataTransfer.effectAllowed = "move"; }}
+              onDragEnd={() => { setDraggingFolder(null); setDropTarget(null); }}
+              onDragOver={(e) => {
+                const reordering = draggingFolder && draggingFolder !== f.name;
+                if (dragging || reordering) { e.preventDefault(); setDropTarget(f.name); }
+              }}
               onDragLeave={() => setDropTarget((t) => (t === f.name ? null : t))}
-              onDrop={(e) => dropBoard(e, f.name)}
+              onDrop={(e) => { if (draggingFolder) { e.preventDefault(); reorder(f.name); } else dropBoard(e, f.name); }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -334,10 +403,13 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
                 borderRadius: "var(--radius-lg)",
                 background: over ? "var(--accent)" : active ? "var(--accent-soft)" : "transparent",
                 color: over ? "#fff" : active ? "var(--accent-text)" : "var(--text-muted)",
-                outline: over ? "2px solid var(--accent)" : "none",
+                outline: over && !draggingFolder ? "2px solid var(--accent)" : "none",
+                opacity: draggingFolder === f.name ? 0.4 : 1,
+                borderTop: over && draggingFolder ? "2px solid var(--accent)" : "2px solid transparent",
                 transition: "background .12s",
                 fontSize: "var(--text-sm)",
                 fontWeight: active || over ? "var(--weight-bold)" : "var(--weight-semibold)",
+                cursor: "grab",
               }}
             >
               <IconFolder size={15} />

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { type CSSProperties, Suspense, useMemo, useState } from "react";
+import { type CSSProperties, Suspense, useEffect, useMemo, useState } from "react";
 import type { Board } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
@@ -10,6 +10,7 @@ import { formatAgo } from "@/lib/utils";
 import { AppShell, type DashView } from "@/components/app/AppShell";
 import { BoardCard } from "@/components/app/BoardCard";
 import { BoardThumbnail } from "@/components/app/BoardThumbnail";
+import { MoveToFolderDialog } from "@/components/app/MoveToFolderDialog";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { Button, ConfirmDialog, EmptyState, Input, LiveDot, Modal, useToast } from "@/components/ui";
 import { IconFolder, IconGrid, IconMonitor, IconSearch, IconTemplate } from "@/components/ui/icons";
@@ -32,6 +33,13 @@ function DashboardInner() {
   const [query, setQuery] = useState("");
   const [activateBoard, setActivateBoard] = useState<Board | null>(null);
   const [endRoomId, setEndRoomId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkMove, setBulkMove] = useState(false);
+  const toggleSelect = (id: string) =>
+    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const clearSelection = () => setSelected(new Set());
+  // Reset the selection when the view / folder / search changes.
+  useEffect(() => { setSelected(new Set()); }, [view, folder, query]);
 
   const boards = useLiveQuery("board-list", () => db.listBoards());
   const activeRooms = useLiveQuery("board-list", () => db.listActiveRooms());
@@ -267,7 +275,7 @@ function DashboardInner() {
                 </SectionLabel>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
                   {g.boards.map((board) => (
-                    <BoardCard key={board.id} board={board} onActivate={setActivateBoard} />
+                    <BoardCard key={board.id} board={board} onActivate={setActivateBoard} selected={selected.has(board.id)} onToggleSelect={() => toggleSelect(board.id)} />
                   ))}
                 </div>
               </section>
@@ -312,13 +320,64 @@ function DashboardInner() {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
                 {pool.map((board) => (
-                  <BoardCard key={board.id} board={board} onActivate={setActivateBoard} />
+                  <BoardCard key={board.id} board={board} onActivate={setActivateBoard} selected={selected.has(board.id)} onToggleSelect={() => toggleSelect(board.id)} />
                 ))}
               </div>
             )}
           </section>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div
+          dir="rtl"
+          style={{
+            position: "fixed",
+            insetInlineStart: 0,
+            insetInlineEnd: 0,
+            bottom: 20,
+            display: "flex",
+            justifyContent: "center",
+            zIndex: 70,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            className="ngg-fade-up"
+            style={{
+              pointerEvents: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              background: "var(--ink-950, #101014)",
+              color: "#fff",
+              padding: "10px 12px 10px 18px",
+              borderRadius: "var(--radius-pill)",
+              boxShadow: "var(--shadow-xl)",
+            }}
+          >
+            <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>{selected.size} נבחרו</span>
+            <span style={{ width: 1, height: 20, background: "rgba(255,255,255,.2)" }} />
+            <button onClick={() => setBulkMove(true)} className="ngg-hover" style={bulkBtn()}>העברה לתיקייה</button>
+            <button
+              onClick={() => {
+                const ids = [...selected];
+                ids.forEach((id) => db.setBoardStatus(id, "archived"));
+                clearSelection();
+                toast.show(`${ids.length} לוחות הועברו לארכיון`, () => ids.forEach((id) => db.setBoardStatus(id, "ready")));
+              }}
+              className="ngg-hover"
+              style={bulkBtn()}
+            >
+              העברה לארכיון
+            </button>
+            <button onClick={clearSelection} aria-label="ניקוי הבחירה" className="ngg-hover" style={{ ...bulkBtn(), color: "var(--neutral-400,#a1a1aa)" }}>נקה</button>
+          </div>
+        </div>
+      )}
+
+      <MoveToFolderDialog open={bulkMove} boardIds={[...selected]} onClose={() => setBulkMove(false)} onDone={clearSelection} />
 
       <RoomActivationDialog board={activateBoard} open={!!activateBoard} onClose={() => setActivateBoard(null)} />
       <ConfirmDialog
@@ -400,6 +459,10 @@ function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) 
   );
 }
 
+function bulkBtn(): CSSProperties {
+  return { border: "none", background: "transparent", color: "#fff", fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", padding: "6px 10px", borderRadius: "var(--radius-md)", cursor: "pointer", fontFamily: "inherit" };
+}
+
 function menuBtn(danger: boolean): CSSProperties {
   return { border: "none", background: "transparent", fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)", color: danger ? "var(--danger)" : "var(--text)", padding: "8px 10px", borderRadius: "var(--radius-md)", cursor: "pointer", textAlign: "start" };
 }
@@ -412,9 +475,35 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+function DashboardSkeleton() {
+  return (
+    <div style={{ padding: "26px 30px 40px", maxWidth: 1240, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+        <div className="ngg-skeleton" style={{ width: 160, height: 30 }} />
+        <div style={{ flex: 1 }} />
+        <div className="ngg-skeleton" style={{ width: 230, height: 38 }} />
+        <div className="ngg-skeleton" style={{ width: 110, height: 38 }} />
+      </div>
+      <div className="ngg-skeleton" style={{ width: 90, height: 14, marginBottom: 12 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", overflow: "hidden", background: "var(--surface)" }}>
+            <div className="ngg-skeleton" style={{ height: 132, borderRadius: 0 }} />
+            <div style={{ padding: "11px 12px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+              <div className="ngg-skeleton" style={{ width: "75%", height: 13 }} />
+              <div className="ngg-skeleton" style={{ width: 64, height: 18, borderRadius: "var(--radius-pill)" }} />
+              <div className="ngg-skeleton" style={{ width: "55%", height: 10 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function BoardsDashboardPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<DashboardSkeleton />}>
       <DashboardInner />
     </Suspense>
   );

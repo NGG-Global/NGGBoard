@@ -12,26 +12,35 @@ import { IconFolder } from "@/components/ui/icons";
  */
 export function MoveToFolderDialog({
   open,
-  boardId,
-  currentFolder,
+  boardIds,
+  currentFolder = null,
   boardName,
   onClose,
+  onDone,
 }: {
   open: boolean;
-  boardId: string;
-  currentFolder: string | null;
-  boardName: string;
+  /** One or more boards to move. */
+  boardIds: string[];
+  /** Current folder — only meaningful for a single board (shows the ✓). */
+  currentFolder?: string | null;
+  /** Board name for the single-board toast; omitted for bulk. */
+  boardName?: string;
   onClose: () => void;
+  /** Called after a successful move (e.g. to clear a bulk selection). */
+  onDone?: () => void;
 }) {
   const toast = useToast();
   const folders = useLiveQuery("board-list", () => db.listFolders());
   const [newName, setNewName] = useState("");
+  const many = boardIds.length > 1;
 
   function assign(folder: string | null) {
-    db.setBoardFolder(boardId, folder);
+    for (const id of boardIds) db.setBoardFolder(id, folder);
     onClose();
     setNewName("");
-    toast.show(folder ? `"${boardName}" הועבר לתיקייה "${folder}"` : `"${boardName}" הוסר מהתיקייה`);
+    onDone?.();
+    const label = many ? `${boardIds.length} לוחות` : boardName ? `"${boardName}"` : "הלוח";
+    toast.show(folder ? `${label} הועברו לתיקייה "${folder}"` : `${label} הוסרו מהתיקייה`);
   }
 
   function createAndAssign() {

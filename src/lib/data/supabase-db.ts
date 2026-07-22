@@ -404,6 +404,20 @@ class SupabaseDB {
   setBoardFolder(boardId: string, folder: string | null): void {
     this.updateBoard(boardId, { folder: folder?.trim() || null });
   }
+  reorderFolders(names: string[]): void {
+    const org = this.currentOrgId();
+    const rows: Folder[] = names.map((name, i) => {
+      const entry = this.cache.folders.find((f) => f.name === name);
+      if (entry) { entry.sort = i; return entry; }
+      const created: Folder = { id: uuid(), organization_id: org, name, sort: i, created_at: new Date().toISOString() };
+      this.cache.folders.push(created);
+      return created;
+    });
+    this.emit("board-list");
+    const sb = getSupabase();
+    void sb?.from("folders").upsert(rows, { onConflict: "organization_id,name" })
+      .then(({ error }) => error && console.warn("reorderFolders", error.message));
+  }
 
   // ---- boards ---------------------------------------------------------------
   listBoards(): Board[] {

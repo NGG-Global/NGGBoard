@@ -231,6 +231,17 @@ class LocalDB {
     this.updateBoard(boardId, { folder: clean });
   }
 
+  /** Persist a new folder order (by name). Registers any not-yet-persisted folder. */
+  reorderFolders(names: string[]): void {
+    const db = this.read();
+    names.forEach((name, i) => {
+      const entry = db.folders.find((f) => f.name === name);
+      if (entry) entry.sort = i;
+      else db.folders.push({ id: `folder_${randomId(6)}`, organization_id: this.getOrganization().id, name, sort: i, created_at: new Date().toISOString() });
+    });
+    this.commit({ kind: "board-list" });
+  }
+
   // ---- boards ---------------------------------------------------------------
 
   listBoards(): Board[] {

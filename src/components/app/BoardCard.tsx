@@ -7,12 +7,23 @@ import type { Board } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
-import { BoardStatusBadge, Badge, ConfirmDialog, useToast } from "@/components/ui";
+import { BoardStatusBadge, Badge, ConfirmDialog, LiveDot, useToast } from "@/components/ui";
+import { IconFolder } from "@/components/ui/icons";
 import { BoardThumbnail } from "./BoardThumbnail";
 import { MoveToFolderDialog } from "./MoveToFolderDialog";
 import { BOARD_DND_MIME, useDashDnd } from "./dnd";
 
-export function BoardCard({ board, onActivate }: { board: Board; onActivate: (board: Board) => void }) {
+export function BoardCard({
+  board,
+  onActivate,
+  selected,
+  onToggleSelect,
+}: {
+  board: Board;
+  onActivate: (board: Board) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -42,15 +53,45 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
       style={{
         position: "relative",
         background: "var(--surface)",
-        border: "1px solid var(--border)",
+        border: selected ? "1.5px solid var(--accent)" : "1px solid var(--border)",
         borderRadius: "var(--radius-xl)",
-        boxShadow: "var(--shadow-xs)",
+        boxShadow: selected ? "0 0 0 3px var(--accent-soft)" : "var(--shadow-xs)",
         display: "flex",
         flexDirection: "column",
         cursor: "grab",
         opacity: dragging ? 0.5 : 1,
       }}
     >
+      {onToggleSelect && (
+        <button
+          role="checkbox"
+          aria-checked={!!selected}
+          aria-label={selected ? "ביטול בחירה" : "בחירת הלוח"}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSelect(); }}
+          draggable={false}
+          style={{
+            position: "absolute",
+            top: 8,
+            insetInlineStart: 8,
+            zIndex: 5,
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            border: selected ? "none" : "1.5px solid var(--border-strong)",
+            background: selected ? "var(--accent)" : "rgba(255,255,255,.9)",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 900,
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          {selected ? "✓" : ""}
+        </button>
+      )}
       <Link href={`/app/boards/${board.id}`} aria-label={`פתח את ${board.internal_name}`} draggable={false}>
         <BoardThumbnail board={board} />
       </Link>
@@ -171,17 +212,36 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <BoardStatusBadge status={board.status} />
+          {activeRoom ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--accent)", color: "#fff", padding: "2px 9px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
+              <LiveDot light />
+              בשידור חי
+            </span>
+          ) : (
+            <BoardStatusBadge status={board.status} />
+          )}
           {shared && owner && (
             <Badge color="neutral" variant="outline">
               שותף · {owner.full_name.split(" ")[0]}
             </Badge>
           )}
+          {board.folder && (
+            <Link
+              href={`/app/boards?view=all&folder=${encodeURIComponent(board.folder)}`}
+              draggable={false}
+              className="ngg-hover"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--text-subtle)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-semibold)", padding: "2px 7px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border)" }}
+            >
+              <IconFolder size={11} />
+              {board.folder}
+            </Link>
+          )}
         </div>
 
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
-          נערך {formatAgo(board.updated_at)}
-          {board.last_activated_at && ` · הופעל ${formatAgo(board.last_activated_at)}`}
+          {activeRoom
+            ? `${activeRoom.participant_count} משתתפים · ${db.listSubmissions(activeRoom.id).length} פריטי תוכן`
+            : `נערך ${formatAgo(board.updated_at)}${board.last_activated_at ? ` · הופעל ${formatAgo(board.last_activated_at)}` : ""}`}
         </div>
       </div>
 
@@ -205,7 +265,7 @@ export function BoardCard({ board, onActivate }: { board: Board; onActivate: (bo
       />
       <MoveToFolderDialog
         open={moveFolder}
-        boardId={board.id}
+        boardIds={[board.id]}
         currentFolder={board.folder}
         boardName={board.internal_name}
         onClose={() => setMoveFolder(false)}
