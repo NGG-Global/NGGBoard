@@ -1,4 +1,42 @@
 import type { BackgroundTheme, Board, BoardAppearance, BoardZone, FontScale } from "@/lib/types";
+import { DEFAULT_IMAGE_SIZE_LIMIT_MB, DEFAULT_TEXT_CHAR_LIMIT } from "@/lib/constants";
+
+const DEFAULT_APPEARANCE: Board["appearance"] = {
+  background_theme: "soft", background_color: null, background_image_url: null,
+  client_logo_url: null, show_org_logo: true, card_style: "elevated", font_scale: "md",
+};
+const DEFAULT_PARTICIPATION: Board["participation"] = {
+  allow_text: true, allow_image: true, name_policy: "optional", anonymous_allowed: true,
+  multiple_submissions: true, text_char_limit: DEFAULT_TEXT_CHAR_LIMIT,
+  image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB, allow_participant_edit: false,
+  allow_participant_delete: true,
+};
+const DEFAULT_MODERATION: Board["moderation"] = {
+  mode: "immediate", hide_identity_on_display: false, blocked_words: [],
+};
+
+/**
+ * Fill a board row with complete defaults. Boards created by an earlier app
+ * version predate fields such as `zones` and `tags`, so their stored shape is
+ * partial; screens that read those fields (iterating `tags`, mapping `zones`,
+ * reading nested appearance/participation/moderation keys) would otherwise
+ * throw. Both data backends pass boards through here on read, so the UI always
+ * receives a complete object. Idempotent for already-complete boards.
+ */
+export function normalizeBoard(board: Board): Board {
+  return {
+    ...board,
+    appearance: { ...DEFAULT_APPEARANCE, ...(board.appearance ?? {}) },
+    participation: { ...DEFAULT_PARTICIPATION, ...(board.participation ?? {}) },
+    moderation: { ...DEFAULT_MODERATION, ...(board.moderation ?? {}) },
+    sharing: board.sharing ?? "private",
+    default_layout: board.default_layout ?? "wall",
+    default_sort: board.default_sort ?? "newest",
+    zones: Array.isArray(board.zones) ? board.zones : [],
+    tags: Array.isArray(board.tags) ? board.tags : [],
+    collaborator_ids: Array.isArray(board.collaborator_ids) ? board.collaborator_ids : [],
+  };
+}
 
 /** Normalised zone list (empty when the board is undivided). */
 export function boardZones(board: Pick<Board, "zones">): BoardZone[] {

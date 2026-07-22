@@ -17,6 +17,7 @@ import type {
 import { INACTIVITY_SUSPEND_MS, DEFAULT_IMAGE_SIZE_LIMIT_MB, DEFAULT_TEXT_CHAR_LIMIT } from "@/lib/constants";
 import { generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabase";
+import { normalizeBoard } from "@/lib/board-visuals";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import type { Database } from "./seed";
 
@@ -89,7 +90,7 @@ class SupabaseDB {
     ]);
     if (profiles) this.cache.profiles = profiles as Profile[];
     if (orgs) this.cache.organizations = orgs as Database["organizations"];
-    if (boards) this.cache.boards = boards as Board[];
+    if (boards) this.cache.boards = (boards as Board[]).map(normalizeBoard);
     this.emit("board-list");
     this.subscribeBoardList();
   }
@@ -112,7 +113,7 @@ class SupabaseDB {
         if (p.eventType === "DELETE" && p.old && (p.old as Board).id) {
           this.cache.boards = this.cache.boards.filter((b) => b.id !== (p.old as Board).id);
         } else if (p.new && (p.new as Board).id) {
-          this.upsert(this.cache.boards, p.new as Board);
+          this.upsert(this.cache.boards, normalizeBoard(p.new as Board));
         }
         this.emit("board-list");
       })
@@ -187,7 +188,7 @@ class SupabaseDB {
     const sb = getSupabase();
     if (sb && !this.cache.boards.some((b) => b.id === room.board_id)) {
       const { data: board } = await sb.from("boards").select("*").eq("id", room.board_id).maybeSingle();
-      if (board) this.upsert(this.cache.boards, board as Board);
+      if (board) this.upsert(this.cache.boards, normalizeBoard(board as Board));
     }
     await this.loadSubmissions(room.id, true);
     void this.loadParticipants(room.id);

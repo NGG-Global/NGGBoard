@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 import { INACTIVITY_SUSPEND_MS } from "@/lib/constants";
 import { formatRoomCode, generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
+import { normalizeBoard } from "@/lib/board-visuals";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import { buildSeed, CURRENT_USER_ID, type Database } from "./seed";
 
@@ -152,13 +153,14 @@ class LocalDB {
   // ---- boards ---------------------------------------------------------------
 
   listBoards(): Board[] {
-    return [...this.read().boards].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-    );
+    return [...this.read().boards]
+      .map(normalizeBoard)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
 
   getBoard(id: string): Board | null {
-    return this.read().boards.find((b) => b.id === id) ?? null;
+    const board = this.read().boards.find((b) => b.id === id);
+    return board ? normalizeBoard(board) : null;
   }
 
   createBoard(input: Partial<Board>): Board {
