@@ -236,7 +236,10 @@ class SupabaseDB {
     };
     this.upsert(this.cache.boards, board);
     const room: LiveRoom = {
-      id: `viewroom_${v.public_id}`,
+      // Prefer the real room id (exposed by public_board_view as of migration
+      // 0007) so anon submission reads + realtime match real rows. Falls back to
+      // a synthetic id when running against a pre-0007 view.
+      id: v.room_id ?? `viewroom_${v.public_id}`,
       board_id: boardId,
       organization_id: "public",
       public_id: v.public_id,
@@ -733,6 +736,8 @@ const ACTIVE_STATES = ["active", "paused", "read_only", "suspended"];
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface PublicViewRow {
+  /** Real room id — present once migration 0007 is applied; absent before it. */
+  room_id?: string;
   public_id: string;
   room_code: string;
   status: RoomStatus;
