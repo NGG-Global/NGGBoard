@@ -10,8 +10,14 @@ import type { RealtimeScope } from "@/lib/data/realtime";
  *
  * `scope` decides which signals trigger a refetch: "board-list" for dashboard
  * views, `{ room }` for anything inside a live session.
+ *
+ * `deps` lists reactive values the selector closes over *beyond* the DB and
+ * `scope` (e.g. a `sessionId` from state). Realtime signals alone won't catch a
+ * change to those, so the selector is also re-run whenever a dep changes —
+ * without this, a selector reading fresh component state returns a stale value
+ * until an unrelated signal happens to fire.
  */
-export function useLiveQuery<T>(scope: RealtimeScope, selector: () => T): T {
+export function useLiveQuery<T>(scope: RealtimeScope, selector: () => T, deps: readonly unknown[] = []): T {
   const selectorRef = useRef(selector);
   selectorRef.current = selector;
 
@@ -37,6 +43,12 @@ export function useLiveQuery<T>(scope: RealtimeScope, selector: () => T): T {
     // scope is stable per-usage; stringify guards accidental re-subscribes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeof scope === "string" ? scope : scope.room, refresh]);
+
+  // Re-run the selector when caller-declared inputs change (see `deps` above).
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 
   return value;
 }

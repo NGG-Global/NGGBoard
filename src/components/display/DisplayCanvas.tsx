@@ -95,7 +95,11 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
     return () => clearInterval(id);
   }, [scrollable, focused, pageCount]);
 
-  const shown = scrollable ? ordered : ordered.slice(page * pageSize, page * pageSize + pageSize);
+  // Clamp the page: if submissions were removed while parked on a high page,
+  // `page` can exceed the new range and slice to an empty screen until the next
+  // 12s tick. Fall back to page 0 rather than show a blank projector.
+  const safePage = page < pageCount ? page : 0;
+  const shown = scrollable ? ordered : ordered.slice(safePage * pageSize, safePage * pageSize + pageSize);
   const cols = columnsFor(scrollable ? Math.min(ordered.length, 20) : shown.length);
   // Projector shrinks text as density rises so a full screen stays readable;
   // the scrollable view keeps a comfortable fixed size and lets you scroll.
@@ -199,7 +203,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
         {pageCount > 1 && !focused && !zoned && (
           <div style={{ display: "flex", gap: 6 }} aria-hidden="true">
             {Array.from({ length: pageCount }).map((_, i) => (
-              <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i === page ? "var(--accent)" : v.dark ? "rgba(255,255,255,.3)" : "rgba(8,8,16,.2)" }} />
+              <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i === safePage ? "var(--accent)" : v.dark ? "rgba(255,255,255,.3)" : "rgba(8,8,16,.2)" }} />
             ))}
           </div>
         )}

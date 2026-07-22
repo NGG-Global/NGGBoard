@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DisplayLayout, Submission } from "@/lib/types";
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted, useTicker } from "@/lib/hooks";
@@ -90,13 +90,17 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
     return c;
   }, [submissions]);
 
-  // Default the drawer's content tab to whatever needs attention.
+  // Default the drawer's content tab ONCE, after the first data arrives — then
+  // leave the facilitator's choice alone. (Previously this re-fired on every
+  // pending 0↔1 transition, yanking the tab away mid-session as items arrived
+  // or were cleared.)
+  const didDefaultTab = useRef(false);
   useEffect(() => {
-    if (counts.pending > 0) setTab("pending");
-    else setTab("published");
-    // run once after first data arrives
+    if (didDefaultTab.current || submissions.length === 0) return;
+    didDefaultTab.current = true;
+    setTab(counts.pending > 0 ? "pending" : "published");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [counts.pending > 0]);
+  }, [submissions.length]);
 
   const listItems = useMemo(() => {
     const inTab = submissions.filter((s) => s.status === tab);
