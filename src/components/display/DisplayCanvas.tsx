@@ -75,24 +75,33 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
     return base;
   }, [submissions, board.default_sort]);
 
+  // Facilitator mode is an interactive screen (the live control room), so it
+  // scrolls and shows every card. A passive projector keeps fitting one screen
+  // at a time and auto-cycles pages. `scrollable` gates the two behaviours.
+  const scrollable = !!facilitator;
+
   const pageSize = pageSizeFor(room.layout, ordered.length);
-  const pageCount = Math.max(1, Math.ceil(ordered.length / pageSize));
+  const pageCount = scrollable ? 1 : Math.max(1, Math.ceil(ordered.length / pageSize));
   const [page, setPage] = useState(0);
 
-  // Auto-cycle pages when content overflows one screen (paused during focus mode).
+  // Auto-cycle pages when content overflows one screen (projector only; paused
+  // during focus mode). Never cycles when the view is scrollable.
   useEffect(() => {
-    if (focused || pageCount <= 1) {
+    if (scrollable || focused || pageCount <= 1) {
       setPage(0);
       return;
     }
     const id = setInterval(() => setPage((p) => (p + 1) % pageCount), 12000);
     return () => clearInterval(id);
-  }, [focused, pageCount]);
+  }, [scrollable, focused, pageCount]);
 
-  const pageItems = ordered.slice(page * pageSize, page * pageSize + pageSize);
-  const cols = columnsFor(pageItems.length);
-  // Slightly shrink text as density rises so cards stay readable, never illegible.
-  const densityScale = baseScale * (pageItems.length > 12 ? 0.82 : pageItems.length > 6 ? 0.92 : 1);
+  const shown = scrollable ? ordered : ordered.slice(page * pageSize, page * pageSize + pageSize);
+  const cols = columnsFor(scrollable ? Math.min(ordered.length, 20) : shown.length);
+  // Projector shrinks text as density rises so a full screen stays readable;
+  // the scrollable view keeps a comfortable fixed size and lets you scroll.
+  const densityScale = scrollable
+    ? baseScale * 0.95
+    : baseScale * (shown.length > 12 ? 0.82 : shown.length > 6 ? 0.92 : 1);
 
   const overlay = statusOverlay(room);
 
@@ -139,24 +148,24 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
         )}
       </header>
 
-      {/* Content area */}
-      <div className="ngg-no-scrollbar" style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+      {/* Content area — scrolls in facilitator mode, fits one screen on a projector. */}
+      <div className={scrollable ? undefined : "ngg-no-scrollbar"} style={{ flex: 1, minHeight: 0, overflowY: scrollable ? "auto" : "hidden", overflowX: "hidden" }}>
         {ordered.length === 0 && !zoned ? (
           <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} />
         ) : zoned ? (
-          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} />
+          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} scrollable={scrollable} />
         ) : room.layout === "mosaic" ? (
-          <div style={{ columns: cols, columnGap: "clamp(12px, 1.4vw, 22px)", height: "100%", overflow: "hidden" }}>
-            {pageItems.map((s) => (
+          <div style={{ columns: cols, columnGap: "clamp(12px, 1.4vw, 22px)", height: scrollable ? undefined : "100%", overflow: "hidden" }}>
+            {shown.map((s) => (
               <div key={s.id} style={{ marginBottom: "clamp(12px, 1.4vw, 22px)", breakInside: "avoid" }}>
                 <DisplaySubmission submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
               </div>
             ))}
           </div>
         ) : room.layout === "feed" ? (
-          <div style={{ display: "grid", gridTemplateColumns: pageItems.length > 4 ? "1fr 1fr" : "1fr", gap: "clamp(12px, 1.4vw, 22px)", height: "100%", alignContent: "start" }}>
-            {pageItems.map((s, i) => (
-              <div key={s.id} style={{ gridColumn: i === 0 && pageItems.length > 4 ? "1 / -1" : undefined }}>
+          <div style={{ display: "grid", gridTemplateColumns: shown.length > 4 ? "1fr 1fr" : "1fr", gap: "clamp(12px, 1.4vw, 22px)", height: scrollable ? undefined : "100%", alignContent: "start" }}>
+            {shown.map((s, i) => (
+              <div key={s.id} style={{ gridColumn: i === 0 && shown.length > 4 ? "1 / -1" : undefined }}>
                 <DisplaySubmission submission={s} board={board} scale={densityScale * (i === 0 ? 1.15 : 1)} facilitator={facFor(s)} />
               </div>
             ))}
@@ -167,11 +176,12 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
               display: "grid",
               gridTemplateColumns: `repeat(${cols}, 1fr)`,
               gap: "clamp(12px, 1.4vw, 22px)",
-              height: "100%",
-              gridAutoRows: "1fr",
+              height: scrollable ? undefined : "100%",
+              gridAutoRows: scrollable ? "min-content" : "1fr",
+              alignContent: "start",
             }}
           >
-            {pageItems.map((s) => (
+            {shown.map((s) => (
               <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
             ))}
           </div>
@@ -251,6 +261,7 @@ function ZonedContent({
   scale,
   dark,
   facFor,
+  scrollable,
 }: {
   zones: BoardZone[];
   ordered: Submission[];
@@ -258,6 +269,7 @@ function ZonedContent({
   scale: number;
   dark: boolean;
   facFor: (s: Submission) => FacilitatorCardActions | undefined;
+  scrollable: boolean;
 }) {
   const firstZoneId = zones[0]?.id;
   const byZone = new Map<string, Submission[]>();
@@ -283,11 +295,11 @@ function ZonedContent({
               </div>
               {z.subtitle && <div style={{ fontSize: `clamp(11px, ${0.9 * scale}vw, ${16 * scale}px)`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
             </div>
-            <div className="ngg-no-scrollbar" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
+            <div className={scrollable ? undefined : "ngg-no-scrollbar"} style={{ flex: 1, minHeight: 0, overflowY: scrollable ? "auto" : "hidden", overflowX: "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
               {items.length === 0 ? (
                 <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>עדיין אין תוכן באזור זה</div>
               ) : (
-                items.slice(0, 12).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} />)
+                (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} />)
               )}
             </div>
           </div>
