@@ -10,6 +10,7 @@ import { SUBMISSION_RATE_LIMIT_MS } from "@/lib/constants";
 import { findBlockedWord, sanitizeText } from "@/lib/utils";
 import { validateSubmissionText } from "@/lib/validation";
 import { Button, Input, Spinner } from "@/components/ui";
+import { LanguageToggle, useI18n } from "@/lib/i18n/react";
 import { IconCheck, IconClock, IconImage, IconText, IconWarning, IconWifiOff } from "@/components/ui/icons";
 import { ImageUploadField } from "./ImageUploadField";
 
@@ -20,6 +21,7 @@ function sessionKey(publicId: string) {
 }
 
 export function ParticipantFlow({ publicId }: { publicId: string }) {
+  const { t } = useI18n();
   const mounted = useMounted();
   const room = useLiveQuery({ room: publicId }, () => db.getRoomByPublicId(publicId));
   const board = useLiveQuery({ room: publicId }, () => {
@@ -80,14 +82,14 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
         <ParticipantShell board={null}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "56px 12px", color: "var(--text-muted)" }}>
             <Spinner size={28} />
-            <div style={{ fontSize: "var(--text-sm)" }}>מתחבר למפגש…</div>
+            <div style={{ fontSize: "var(--text-sm)" }}>{t("מתחבר למפגש…")}</div>
           </div>
         </ParticipantShell>
       );
     }
     return (
       <ParticipantShell board={null}>
-        <StateCard icon={<IconWarning size={40} />} title="החדר לא נמצא" description="בדקו את הקוד או הקישור ונסו שוב. ייתכן שהמפגש טרם התחיל או שהסתיים." />
+        <StateCard icon={<IconWarning size={40} />} title={t("החדר לא נמצא")} description={t("בדקו את הקוד או הקישור ונסו שוב. ייתכן שהמפגש טרם התחיל או שהסתיים.")} />
       </ParticipantShell>
     );
   }
@@ -104,21 +106,21 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   if (room.status === "ended") {
     return (
       <ParticipantShell board={board}>
-        <StateCard icon={<IconCheck size={40} />} title="המפגש הסתיים" description="תודה על ההשתתפות! אי אפשר לשלוח תוכן נוסף." />
+        <StateCard icon={<IconCheck size={40} />} title={t("המפגש הסתיים")} description={t("תודה על ההשתתפות! אי אפשר לשלוח תוכן נוסף.")} />
       </ParticipantShell>
     );
   }
   if (room.status === "suspended") {
     return (
       <ParticipantShell board={board}>
-        <StateCard icon={<IconClock size={40} />} title="החדר מושהה זמנית" description="המנחה השהה את המפגש. השאירו את החלון פתוח — כשהמפגש יחזור לפעילות תוכלו לשלוח." />
+        <StateCard icon={<IconClock size={40} />} title={t("החדר מושהה זמנית")} description={t("המנחה השהה את המפגש. השאירו את החלון פתוח — כשהמפגש יחזור לפעילות תוכלו לשלוח.")} />
       </ParticipantShell>
     );
   }
 
   function joinRoom() {
     if (board!.participation.name_policy === "required" && !name.trim()) {
-      setNameError("יש להזין שם כדי להצטרף");
+      setNameError(t("יש להזין שם כדי להצטרף"));
       return;
     }
     const result = db.joinRoom(publicId, board!.participation.name_policy === "disabled" ? null : name);
@@ -131,13 +133,13 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   return (
     <ParticipantShell board={board}>
       {!online && (
-        <Banner icon={<IconWifiOff size={16} />} color="warning">אין חיבור לרשת — התוכן יישמר ויישלח כשהחיבור יחזור</Banner>
+        <Banner icon={<IconWifiOff size={16} />} color="warning">{t("אין חיבור לרשת — התוכן יישמר ויישלח כשהחיבור יחזור")}</Banner>
       )}
       {room.status === "paused" && step !== "done" && (
-        <Banner icon={<IconClock size={16} />} color="warning">המנחה השהה זמנית את קבלת התוכן. אפשר להכין תשובה — היא תישלח כשהקבלה תתחדש.</Banner>
+        <Banner icon={<IconClock size={16} />} color="warning">{t("המנחה השהה זמנית את קבלת התוכן. אפשר להכין תשובה — היא תישלח כשהקבלה תתחדש.")}</Banner>
       )}
       {room.status === "read_only" && step !== "done" && (
-        <Banner icon={<IconWarning size={16} />} color="info">הלוח במצב צפייה בלבד ואינו מקבל תוכן חדש כרגע.</Banner>
+        <Banner icon={<IconWarning size={16} />} color="info">{t("הלוח במצב צפייה בלבד ואינו מקבל תוכן חדש כרגע.")}</Banner>
       )}
 
       {step === "join" && (
@@ -211,34 +213,36 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 // ---- steps ------------------------------------------------------------------
 
 function JoinStep({ board, name, nameError, onName, onContinue, participants }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; participants: number }) {
+  const { t } = useI18n();
   const policy = board.participation.name_policy;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)" }}>{board.public_title}</h1>
         {board.public_subtitle && <p style={{ fontSize: "var(--text-md)", color: "var(--text-muted)" }}>{board.public_subtitle}</p>}
-        {participants > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{participants} משתתפים כבר הצטרפו</p>}
+        {participants > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("{count} משתתפים כבר הצטרפו", { count: participants })}</p>}
       </div>
       {policy !== "disabled" && (
         <Input
-          label={policy === "required" ? "השם שלכם" : "השם שלכם (אופציונלי)"}
+          label={policy === "required" ? t("השם שלכם") : t("השם שלכם (אופציונלי)")}
           value={name}
           onChange={(e) => onName(e.target.value)}
           error={nameError}
-          placeholder="איך לקרוא לכם על המסך?"
+          placeholder={t("איך לקרוא לכם על המסך?")}
           required={policy === "required"}
         />
       )}
-      <Button variant="primary" size="lg" block onClick={onContinue}>המשך</Button>
+      <Button variant="primary" size="lg" block onClick={onContinue}>{t("המשך")}</Button>
     </div>
   );
 }
 
 function ZoneStep({ zones, onPick }: { zones: BoardZone[]; onPick: (id: string) => void }) {
+  const { t } = useI18n();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>לאיזה אזור לשלוח?</div>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>בחרו את האזור שאליו התוכן שלכם יופיע על המסך.</p>
+      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("לאיזה אזור לשלוח?")}</div>
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("בחרו את האזור שאליו התוכן שלכם יופיע על המסך.")}</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {zones.map((z, i) => (
           <button
@@ -249,7 +253,7 @@ function ZoneStep({ zones, onPick }: { zones: BoardZone[]; onPick: (id: string) 
           >
             <span style={{ width: 40, height: 40, borderRadius: "var(--radius-lg)", background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "var(--weight-black)", fontSize: "var(--text-lg)", flex: "none" }}>{i + 1}</span>
             <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-              <span style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{z.title || `אזור ${i + 1}`}</span>
+              <span style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{z.title || t("אזור {num}", { num: i + 1 })}</span>
               {z.subtitle && <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>{z.subtitle}</span>}
             </span>
           </button>
@@ -260,35 +264,38 @@ function ZoneStep({ zones, onPick }: { zones: BoardZone[]; onPick: (id: string) 
 }
 
 function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void }) {
+  const { t } = useI18n();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--accent-soft)", border: "1px solid var(--magenta-200)", borderRadius: "var(--radius-lg)", padding: "8px 12px" }}>
-      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>אזור:</span>
-      <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)", flex: 1, minWidth: 0 }}>{zone.title || "ללא שם"}</span>
+      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>{t("אזור:")}</span>
+      <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)", flex: 1, minWidth: 0 }}>{zone.title || t("ללא שם")}</span>
       {onChange && (
-        <button onClick={onChange} style={{ border: "none", background: "transparent", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", cursor: "pointer" }}>שינוי</button>
+        <button onClick={onChange} style={{ border: "none", background: "transparent", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", cursor: "pointer" }}>{t("שינוי")}</button>
       )}
     </div>
   );
 }
 
 function ChooseStep({ canText, canImage, limitReached, submittedCount, zone, onChangeZone, onText, onImage }: { canText: boolean; canImage: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void }) {
+  const { t } = useI18n();
   if (limitReached) {
-    return <StateCard icon={<IconCheck size={40} />} title="כבר שלחתם" description="בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!" />;
+    return <StateCard icon={<IconCheck size={40} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {zone && <ZoneBanner zone={zone} onChange={onChangeZone} />}
-      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>מה תרצו לשלוח?</div>
-      {submittedCount > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>שלחתם {submittedCount} פריטים עד כה — אפשר להוסיף עוד.</p>}
+      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("מה תרצו לשלוח?")}</div>
+      {submittedCount > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("שלחתם {count} פריטים עד כה — אפשר להוסיף עוד.", { count: submittedCount })}</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {canText && <ChoiceCard icon={<IconText size={24} />} title="כתבו תשובה" desc="שתפו רעיון או תשובה קצרה בטקסט" onClick={onText} />}
-        {canImage && <ChoiceCard icon={<IconImage size={24} />} title="הוסיפו תמונה" desc="צלמו או העלו תמונה מהגלריה" onClick={onImage} />}
+        {canText && <ChoiceCard icon={<IconText size={24} />} title={t("כתבו תשובה")} desc={t("שתפו רעיון או תשובה קצרה בטקסט")} onClick={onText} />}
+        {canImage && <ChoiceCard icon={<IconImage size={24} />} title={t("הוסיפו תמונה")} desc={t("צלמו או העלו תמונה מהגלריה")} onClick={onImage} />}
       </div>
     </div>
   );
 }
 
 function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -301,15 +308,15 @@ function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }:
     const err = validateSubmissionText(clean, limit);
     if (err) return setError(err);
     const blocked = findBlockedWord(clean, board.moderation.blocked_words);
-    if (blocked) return setError("התשובה מכילה מילה שאינה מותרת. אנא נסחו מחדש.");
+    if (blocked) return setError(t("התשובה מכילה מילה שאינה מותרת. אנא נסחו מחדש."));
     // Duplicate / rate-limit protection.
     const mine = db.listSubmissionsForParticipant(room.id, sessionId);
     const last = mine[0];
     if (last && Date.now() - new Date(last.created_at).getTime() < SUBMISSION_RATE_LIMIT_MS) {
-      return setError("רגע לפני — נסו שוב עוד כמה שניות");
+      return setError(t("רגע לפני — נסו שוב עוד כמה שניות"));
     }
     if (mine.some((s) => s.text_content?.trim() === clean.trim())) {
-      return setError("כבר שלחתם את התשובה הזו");
+      return setError(t("כבר שלחתם את התשובה הזו"));
     }
     setSubmitting(true);
     setTimeout(() => {
@@ -332,24 +339,24 @@ function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }:
     <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
       <BackLink onClick={onBack} />
       {zone && <ZoneBanner zone={zone} />}
-      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{zone?.subtitle || board.public_subtitle || "כתבו את התשובה שלכם"}</div>
+      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{zone?.subtitle || board.public_subtitle || t("כתבו את התשובה שלכם")}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
         <textarea
           value={text}
           onChange={(e) => { setText(e.target.value.slice(0, limit)); setError(null); }}
-          placeholder="כתבו כאן…"
+          placeholder={t("כתבו כאן…")}
           className="ngg-focusable"
           autoFocus
           style={{ width: "100%", minHeight: 160, flex: 1, fontFamily: "var(--font-sans)", fontSize: "var(--text-md)", color: "var(--text)", background: "var(--surface)", border: `1px solid ${error ? "var(--danger)" : "var(--border-strong)"}`, borderRadius: "var(--radius-xl)", padding: 14, outline: "none", lineHeight: "var(--leading-relaxed)", resize: "none" }}
         />
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-2xs)" }}>
           <span style={{ color: error ? "var(--danger)" : "var(--text-subtle)", fontWeight: "var(--weight-semibold)" }}>{error ?? " "}</span>
-          <span style={{ color: remaining < 20 ? "var(--warning)" : "var(--text-subtle)" }}>{remaining} תווים נותרו</span>
+          <span style={{ color: remaining < 20 ? "var(--warning)" : "var(--text-subtle)" }}>{t("{count} תווים נותרו", { count: remaining })}</span>
         </div>
       </div>
       <StickyAction>
         <Button variant="primary" size="lg" block disabled={!canSubmit || !text.trim()} onClick={submit}>
-          {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? "שלח" : "קבלת התוכן מושהית"}
+          {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח") : t("קבלת התוכן מושהית")}
         </Button>
       </StickyAction>
     </div>
@@ -357,6 +364,7 @@ function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }:
 }
 
 function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+  const { t } = useI18n();
   const [image, setImage] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -386,14 +394,14 @@ function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <BackLink onClick={onBack} />
       {zone && <ZoneBanner zone={zone} />}
-      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>הוסיפו תמונה</div>
+      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{t("הוסיפו תמונה")}</div>
       <ImageUploadField value={image} onChange={setImage} maxSizeMb={board.participation.image_size_limit_mb} />
       {image && (
-        <Input label="כיתוב (אופציונלי)" value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 120))} placeholder="הוסיפו כיתוב קצר" />
+        <Input label={t("כיתוב (אופציונלי)")} value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 120))} placeholder={t("הוסיפו כיתוב קצר")} />
       )}
       <StickyAction>
         <Button variant="primary" size="lg" block disabled={!canSubmit} onClick={submit}>
-          {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? "שלח תמונה" : "קבלת התוכן מושהית"}
+          {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח תמונה") : t("קבלת התוכן מושהית")}
         </Button>
       </StickyAction>
     </div>
@@ -401,6 +409,7 @@ function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }
 }
 
 function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: boolean; allowMore: boolean; onAnother: () => void; publicId: string }) {
+  const { t } = useI18n();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center", paddingTop: 20 }}>
       <div style={{ width: 72, height: 72, borderRadius: "50%", background: approval ? "var(--warning-bg)" : "var(--success-bg)", color: approval ? "var(--warning)" : "var(--success)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -408,16 +417,16 @@ function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: bool
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <h2 style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-extrabold)" }}>
-          {approval ? "התוכן נשלח וממתין לאישור המנחה" : "התוכן שלכם עלה על הלוח!"}
+          {approval ? t("התוכן נשלח וממתין לאישור המנחה") : t("התוכן שלכם עלה על הלוח!")}
         </h2>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320 }}>
-          {approval ? "ברגע שהמנחה יאשר, התוכן יופיע על המסך המשותף." : "אפשר לראות אותו כעת על המסך המשותף."}
+          {approval ? t("ברגע שהמנחה יאשר, התוכן יופיע על המסך המשותף.") : t("אפשר לראות אותו כעת על המסך המשותף.")}
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 320 }}>
-        {allowMore && <Button variant="primary" size="lg" block onClick={onAnother}>שליחת תוכן נוסף</Button>}
+        {allowMore && <Button variant="primary" size="lg" block onClick={onAnother}>{t("שליחת תוכן נוסף")}</Button>}
         <a href={`/display/${publicId}`} target="_blank" rel="noreferrer">
-          <Button variant="outline" size="md" block>צפייה בלוח המשותף</Button>
+          <Button variant="outline" size="md" block>{t("צפייה בלוח המשותף")}</Button>
         </a>
       </div>
     </div>
@@ -428,9 +437,12 @@ function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: bool
 
 function ParticipantShell({ board, children }: { board: Board | null; children: React.ReactNode }) {
   return (
-    <div dir="rtl" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "14px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
+      <header style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <Image src="/brand/ngg-logo.png" alt="NGG" width={64} height={22} style={{ height: 22, width: "auto" }} />
+        <span style={{ position: "absolute", insetInlineEnd: 16, top: "50%", transform: "translateY(-50%)" }}>
+          <LanguageToggle />
+        </span>
       </header>
       <main style={{ flex: 1, width: "100%", maxWidth: 480, margin: "0 auto", padding: "20px 18px 32px", display: "flex", flexDirection: "column", gap: 14 }}>
         {children}
@@ -470,9 +482,10 @@ function ChoiceCard({ icon, title, desc, onClick }: { icon: React.ReactNode; tit
 }
 
 function BackLink({ onClick }: { onClick: () => void }) {
+  const { t } = useI18n();
   return (
     <button onClick={onClick} style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: 0 }}>
-      ← חזרה
+      {t("← חזרה")}
     </button>
   );
 }

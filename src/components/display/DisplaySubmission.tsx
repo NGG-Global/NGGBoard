@@ -1,6 +1,7 @@
 "use client";
 
 import type { Board, Submission } from "@/lib/types";
+import { useI18n } from "@/lib/i18n/react";
 import { initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
 import { IconEyeOff, IconMonitor, IconPin, IconTrash } from "@/components/ui/icons";
@@ -36,9 +37,10 @@ interface Props {
 
 /** A single submission rendered for the projector — large, high-contrast. */
 export function DisplaySubmission({ submission, board, scale, focus, facilitator }: Props) {
+  const { t } = useI18n();
   const hideIdentity = board.moderation.hide_identity_on_display;
   const anonymous = submission.anonymous || hideIdentity || !submission.display_name;
-  const name = anonymous ? "אנונימי" : submission.display_name!;
+  const name = anonymous ? t("אנונימי") : submission.display_name!;
   const [avBg, avFg] = anonymous ? ["var(--neutral-100)", "var(--neutral-600)"] : avatarColors(submission.id);
 
   const nameSize = `${(focus ? 1.6 : 1) * scale}rem`;
@@ -65,16 +67,16 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
           className="ngg-fac-actions"
           style={{ position: "absolute", top: 8, insetInlineStart: 8, display: "flex", gap: 6, zIndex: 5 }}
         >
-          <button className="ngg-fac-btn" data-active={facilitator.focused} onClick={facilitator.onFocus} title={facilitator.focused ? "הסר מהמסך" : "הצג במרכז"} aria-label="הצג במרכז">
+          <button className="ngg-fac-btn" data-active={facilitator.focused} onClick={facilitator.onFocus} title={facilitator.focused ? t("הסר מהמסך") : t("הצג במרכז")} aria-label={t("הצג במרכז")}>
             <IconMonitor size={16} />
           </button>
-          <button className="ngg-fac-btn" data-active={submission.pinned} onClick={facilitator.onPin} title={submission.pinned ? "בטל הצמדה" : "הצמד"} aria-label="הצמד">
+          <button className="ngg-fac-btn" data-active={submission.pinned} onClick={facilitator.onPin} title={submission.pinned ? t("בטל הצמדה") : t("הצמד")} aria-label={t("הצמד")}>
             <IconPin size={16} />
           </button>
-          <button className="ngg-fac-btn" onClick={facilitator.onHide} title="הסתר" aria-label="הסתר">
+          <button className="ngg-fac-btn" onClick={facilitator.onHide} title={t("הסתר")} aria-label={t("הסתר")}>
             <IconEyeOff size={16} />
           </button>
-          <button className="ngg-fac-btn" data-danger="true" onClick={facilitator.onDelete} title="מחק" aria-label="מחק">
+          <button className="ngg-fac-btn" data-danger="true" onClick={facilitator.onDelete} title={t("מחק")} aria-label={t("מחק")}>
             <IconTrash size={16} />
           </button>
         </div>
@@ -94,7 +96,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         >
           {!isSeedImage(submission.media_url) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={submission.media_url} alt={submission.text_content ?? "תמונה ששלח משתתף"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           )}
         </div>
       )}
@@ -126,7 +128,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         <span style={{ fontSize: nameSize, fontWeight: "var(--weight-bold)", color: "var(--neutral-700)" }}>{name}</span>
         {submission.pinned && (
           <span style={{ marginInlineStart: "auto", fontSize: `${0.75 * scale}rem`, fontWeight: "var(--weight-bold)", color: "var(--magenta-600)", background: "var(--magenta-50)", padding: "2px 10px", borderRadius: "var(--radius-pill)" }}>
-            מוצמד
+            {t("מוצמד")}
           </span>
         )}
       </div>

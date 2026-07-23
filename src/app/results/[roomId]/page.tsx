@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { use, useRef, useState } from "react";
 import { toPng } from "html-to-image";
+import { LanguageToggle, useI18n } from "@/lib/i18n/react";
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { minutesBetween } from "@/lib/utils";
@@ -13,6 +14,7 @@ import { Button, Spinner, useToast } from "@/components/ui";
 import { IconChevron, IconDownload, IconDuplicate } from "@/components/ui/icons";
 
 export default function ResultsPage({ params }: { params: Promise<{ roomId: string }> }) {
+  const { t } = useI18n();
   const { roomId } = use(params);
   const router = useRouter();
   const toast = useToast();
@@ -29,10 +31,10 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
   if (!mounted) return null;
   if (!room || !board) {
     return (
-      <div dir="rtl" style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "var(--font-sans)" }}>
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "var(--font-sans)" }}>
         <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-black)" }}>התוצאות לא נמצאו</div>
-          <Button variant="primary" onClick={() => router.push("/app/boards")}>חזרה לרשימת הלוחות</Button>
+          <div style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-black)" }}>{t("התוצאות לא נמצאו")}</div>
+          <Button variant="primary" onClick={() => router.push("/app/boards")}>{t("חזרה לרשימת הלוחות")}</Button>
         </div>
       </div>
     );
@@ -50,38 +52,39 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
       link.download = `ngg-${board!.internal_name}-${room!.session_label ?? "session"}.png`.replace(/\s+/g, "-");
       link.href = dataUrl;
       link.click();
-      toast.show("התמונה יוצאה בהצלחה");
+      toast.show(t("התמונה יוצאה בהצלחה"));
     } catch {
-      toast.show("ייצוא התמונה נכשל — נסו שוב");
+      toast.show(t("ייצוא התמונה נכשל — נסו שוב"));
     } finally {
       setExporting(false);
     }
   }
 
   return (
-    <div dir="rtl" style={{ minHeight: "100vh", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 24px", background: "var(--surface)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 10 }}>
         <Image src="/brand/ngg-logo.png" alt="NGG" width={64} height={22} style={{ height: 22, width: "auto" }} />
         <div style={{ width: 1, height: 22, background: "var(--border)" }} />
         <button onClick={() => router.push(`/app/boards/${board.id}`)} className="ngg-hover" style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: "7px 10px", borderRadius: "var(--radius-lg)" }}>
           <IconChevron size={15} strokeWidth={2.2} />
-          חזרה ללוח
+          {t("חזרה ללוח")}
         </button>
         <div style={{ flex: 1 }} />
-        <Button variant="secondary" leadingIcon={<IconDuplicate size={15} />} onClick={() => { db.activateRoom(board.id, { mode: "continue", sessionLabel: `${room.session_label ?? "מפגש"} — המשך` }); toast.show("מפגש חדש נפתח עם התוכן שנאסף"); router.push(`/app/boards/${board.id}`); }}>
-          שכפל למפגש חדש
+        <LanguageToggle />
+        <Button variant="secondary" leadingIcon={<IconDuplicate size={15} />} onClick={() => { db.activateRoom(board.id, { mode: "continue", sessionLabel: `${room.session_label ?? "מפגש"} — המשך` }); toast.show(t("מפגש חדש נפתח עם התוכן שנאסף")); router.push(`/app/boards/${board.id}`); }}>
+          {t("שכפל למפגש חדש")}
         </Button>
         <Button variant="primary" leadingIcon={exporting ? <Spinner size={15} color="#fff" /> : <IconDownload size={15} />} onClick={exportPng} disabled={exporting}>
-          ייצוא כתמונה
+          {t("ייצוא כתמונה")}
         </Button>
       </header>
 
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: "26px 24px 48px" }}>
         {/* Summary stats */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 22 }}>
-          <StatCard value={String(room.participant_count)} label="משתתפים" />
-          <StatCard value={String(submissions.length)} label="פריטי תוכן שהוצגו" />
-          <StatCard value={duration != null ? `${duration}` : "—"} label="דקות" />
+          <StatCard value={String(room.participant_count)} label={t("משתתפים")} />
+          <StatCard value={String(submissions.length)} label={t("פריטי תוכן שהוצגו")} />
+          <StatCard value={duration != null ? `${duration}` : "—"} label={t("דקות")} />
         </div>
 
         {/* Exportable snapshot */}
@@ -89,7 +92,7 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
           <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 20 }}>
             {board.appearance.client_logo_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={board.appearance.client_logo_url} alt="לוגו לקוח" style={{ height: 40, background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: 5 }} />
+              <img src={board.appearance.client_logo_url} alt={t("לוגו לקוח")} style={{ height: 40, background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: 5 }} />
             )}
             <div style={{ flex: 1 }}>
               <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)", color: v.dark ? "#fff" : "var(--neutral-950)" }}>{board.public_title}</h1>
@@ -107,7 +110,7 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
 
           {submissions.length === 0 ? (
             <div style={{ padding: "48px 0", textAlign: "center", color: v.dark ? "rgba(255,255,255,.7)" : "var(--neutral-700)", fontSize: "var(--text-md)" }}>
-              לא הוצג תוכן במפגש זה
+              {t("לא הוצג תוכן במפגש זה")}
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14, alignItems: "start" }}>

@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 import { UNDO_WINDOW_MS } from "@/lib/constants";
+import { useI18n } from "@/lib/i18n/react";
 
 interface ToastState {
   id: number;
@@ -23,6 +24,7 @@ export function useToast(): ToastApi {
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   const [toast, setToast] = useState<ToastState | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const counter = useRef(0);
@@ -50,11 +52,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         aria-atomic="true"
         style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 }}
       >
-        {toast ? `${toast.message}${toast.undo ? " — ניתן לבטל" : ""}` : ""}
+        {toast ? `${toast.message}${toast.undo ? ` — ${t("ניתן לבטל")}` : ""}` : ""}
       </div>
       {toast && (
         <div
-          dir="rtl"
           style={{
             position: "fixed",
             bottom: 22,
@@ -92,7 +93,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 whiteSpace: "nowrap",
               }}
             >
-              ביטול
+              {t("ביטול")}
             </button>
           )}
         </div>

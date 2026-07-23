@@ -5,6 +5,7 @@ import { db } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { Button, Input, Modal, useToast } from "@/components/ui";
 import { IconFolder } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n/react";
 
 /**
  * Pick or create a folder for a board. Lists the org's folders, an "unfiled"
@@ -29,6 +30,7 @@ export function MoveToFolderDialog({
   /** Called after a successful move (e.g. to clear a bulk selection). */
   onDone?: () => void;
 }) {
+  const { t } = useI18n();
   const toast = useToast();
   const folders = useLiveQuery("board-list", () => db.listFolders());
   const [newName, setNewName] = useState("");
@@ -39,8 +41,8 @@ export function MoveToFolderDialog({
     onClose();
     setNewName("");
     onDone?.();
-    const label = many ? `${boardIds.length} לוחות` : boardName ? `"${boardName}"` : "הלוח";
-    toast.show(folder ? `${label} הועברו לתיקייה "${folder}"` : `${label} הוסרו מהתיקייה`);
+    const label = many ? t("{count} לוחות", { count: boardIds.length }) : boardName ? `"${boardName}"` : t("הלוח");
+    toast.show(folder ? t('{label} הועברו לתיקייה "{name}"', { label, name: folder }) : t("{label} הוסרו מהתיקייה", { label }));
   }
 
   function createAndAssign() {
@@ -54,11 +56,11 @@ export function MoveToFolderDialog({
     <Modal open={open} onClose={onClose} labelledBy="move-folder-title" width={380}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <h2 id="move-folder-title" style={{ margin: 0, fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>
-          העברה לתיקייה
+          {t("העברה לתיקייה")}
         </h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 260, overflowY: "auto" }}>
-          <FolderRow label="ללא תיקייה" active={!currentFolder} onClick={() => assign(null)} muted />
+          <FolderRow label={t("ללא תיקייה")} active={!currentFolder} onClick={() => assign(null)} muted />
           {folders.map((f) => (
             <FolderRow
               key={f.name}
@@ -75,13 +77,13 @@ export function MoveToFolderDialog({
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="תיקייה חדשה…"
-              aria-label="שם תיקייה חדשה"
+              placeholder={t("תיקייה חדשה…")}
+              aria-label={t("שם תיקייה חדשה")}
               onKeyDown={(e) => e.key === "Enter" && createAndAssign()}
             />
           </div>
           <Button variant="secondary" disabled={!newName.trim()} onClick={createAndAssign}>
-            צור והעבר
+            {t("צור והעבר")}
           </Button>
         </div>
       </div>

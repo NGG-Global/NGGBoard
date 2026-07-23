@@ -14,6 +14,7 @@ import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { SessionHistoryTable } from "@/components/app/SessionHistoryTable";
 import { Button, BoardStatusBadge, Badge, ConfirmDialog, EmptyState, useToast } from "@/components/ui";
 import { IconChevron, IconDuplicate, IconEdit, IconMonitor, IconTrash } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n/react";
 
 const SHARE_LABELS: Record<SharingLevel, string> = {
   private: "פרטי",
@@ -28,6 +29,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
   const { boardId } = use(params);
   const router = useRouter();
   const toast = useToast();
+  const { t } = useI18n();
   const [activateOpen, setActivateOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -40,7 +42,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
     return (
       <AppShell current="all">
         <div style={{ padding: 40, maxWidth: 720, margin: "0 auto" }}>
-          <EmptyState title="הלוח לא נמצא" description="ייתכן שהלוח נמחק או שאין לכם הרשאת גישה אליו." action={<Button variant="primary" onClick={() => router.push("/app/boards")}>חזרה לרשימת הלוחות</Button>} />
+          <EmptyState title={t("הלוח לא נמצא")} description={t("ייתכן שהלוח נמחק או שאין לכם הרשאת גישה אליו.")} action={<Button variant="primary" onClick={() => router.push("/app/boards")}>{t("חזרה לרשימת הלוחות")}</Button>} />
         </div>
       </AppShell>
     );
@@ -55,7 +57,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
       <div style={{ padding: "22px 30px 48px", maxWidth: 1080, margin: "0 auto" }}>
         <button onClick={() => router.push("/app/boards")} className="ngg-hover" style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: "7px 10px", borderRadius: "var(--radius-lg)", marginBottom: 14 }}>
           <IconChevron size={15} strokeWidth={2.2} />
-          הלוחות שלי
+          {t("הלוחות שלי")}
         </button>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(280px, 1fr)", gap: 24, alignItems: "start" }} className="ngg-detail-grid">
@@ -64,7 +66,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
             <EditorPreview title={board.public_title} subtitle={board.public_subtitle} appearance={board.appearance} participation={board.participation} layout={board.default_layout} />
 
             <section>
-              <h2 style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-extrabold)", marginBottom: 12 }}>היסטוריית מפגשים</h2>
+              <h2 style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-extrabold)", marginBottom: 12 }}>{t("היסטוריית מפגשים")}</h2>
               <SessionHistoryTable sessions={sessions} />
             </section>
           </div>
@@ -74,7 +76,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
                 <BoardStatusBadge status={board.status} />
-                <Badge color="neutral" variant="outline">{SHARE_LABELS[board.sharing]}</Badge>
+                <Badge color="neutral" variant="outline">{t(SHARE_LABELS[board.sharing])}</Badge>
               </div>
               <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)" }}>{board.internal_name}</h1>
               {board.public_title !== board.internal_name && (
@@ -84,23 +86,23 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
 
             {activeRoom ? (
               <div style={{ background: "var(--accent-soft)", border: "1.5px solid var(--magenta-400)", borderRadius: "var(--radius-xl)", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>יש חדר פעיל ללוח זה</div>
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>{t("יש חדר פעיל ללוח זה")}</div>
                 <Button variant="primary" block leadingIcon={<IconMonitor size={16} />} onClick={() => router.push(`/app/rooms/${activeRoom.id}/control`)}>
-                  חזרה לחדר הבקרה
+                  {t("חזרה לחדר הבקרה")}
                 </Button>
                 <Button variant="ghost" block onClick={() => setConfirmEnd(true)}>
-                  כבה את החדר הפעיל
+                  {t("כבה את החדר הפעיל")}
                 </Button>
               </div>
             ) : (
               <Button variant="primary" size="lg" block disabled={!ready} onClick={() => setActivateOpen(true)}>
-                {ready ? "הפעל חדר חי" : "השלימו את הלוח כדי להפעיל"}
+                {ready ? t("הפעל חדר חי") : t("השלימו את הלוח כדי להפעיל")}
               </Button>
             )}
 
             <div style={{ display: "flex", gap: 10 }}>
               <Button variant="secondary" block leadingIcon={<IconEdit size={15} />} onClick={() => router.push(`/app/boards/${board.id}/edit`)}>
-                עריכה
+                {t("עריכה")}
               </Button>
               <Button
                 variant="secondary"
@@ -108,34 +110,34 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
                 leadingIcon={<IconDuplicate size={15} />}
                 onClick={() => {
                   const dup = db.duplicateBoard(board.id);
-                  toast.show("הלוח שוכפל כטיוטה חדשה");
+                  toast.show(t("הלוח שוכפל כטיוטה חדשה"));
                   router.push(`/app/boards/${dup.id}/edit`);
                 }}
               >
-                שכפול
+                {t("שכפול")}
               </Button>
             </div>
 
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)" }}>סיכום הגדרות</div>
-              <SummaryRow label="עיצוב" value={THEME_VISUALS[board.appearance.background_theme].label} />
-              <SummaryRow label="תוכן מותר" value={[board.participation.allow_text && "טקסט", board.participation.allow_image && "תמונות"].filter(Boolean).join(" · ") || "—"} />
-              <SummaryRow label="שם משתתף" value={NAME_LABELS[board.participation.name_policy]} />
-              <SummaryRow label="אישור תוכן" value={board.moderation.mode === "approval" ? "אישור לפני הצגה" : "הצגה מיידית"} />
-              <SummaryRow label="פריסת ברירת מחדל" value={{ wall: "קיר כרטיסים", mosaic: "פסיפס", feed: "פיד חי" }[board.default_layout]} />
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)" }}>{t("סיכום הגדרות")}</div>
+              <SummaryRow label={t("עיצוב")} value={t(THEME_VISUALS[board.appearance.background_theme].label)} />
+              <SummaryRow label={t("תוכן מותר")} value={[board.participation.allow_text && t("טקסט"), board.participation.allow_image && t("תמונות")].filter(Boolean).join(" · ") || "—"} />
+              <SummaryRow label={t("שם משתתף")} value={t(NAME_LABELS[board.participation.name_policy])} />
+              <SummaryRow label={t("אישור תוכן")} value={board.moderation.mode === "approval" ? t("אישור לפני הצגה") : t("הצגה מיידית")} />
+              <SummaryRow label={t("פריסת ברירת מחדל")} value={t({ wall: "קיר כרטיסים", mosaic: "פסיפס", feed: "פיד חי" }[board.default_layout])} />
             </div>
 
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)" }}>בעלות ושיתוף</div>
-              <SummaryRow label="נוצר על ידי" value={owner?.full_name ?? "—"} />
-              {collaborators.length > 0 && <SummaryRow label="שותפים" value={collaborators.map((c) => c!.full_name.split(" ")[0]).join(", ")} />}
-              <SummaryRow label="עודכן" value={formatAgo(board.updated_at)} />
-              {board.last_activated_at && <SummaryRow label="הופעל לאחרונה" value={formatAgo(board.last_activated_at)} />}
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)" }}>{t("בעלות ושיתוף")}</div>
+              <SummaryRow label={t("נוצר על ידי")} value={owner?.full_name ?? "—"} />
+              {collaborators.length > 0 && <SummaryRow label={t("שותפים")} value={collaborators.map((c) => c!.full_name.split(" ")[0]).join(", ")} />}
+              <SummaryRow label={t("עודכן")} value={formatAgo(board.updated_at)} />
+              {board.last_activated_at && <SummaryRow label={t("הופעל לאחרונה")} value={formatAgo(board.last_activated_at)} />}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <Button variant="secondary" block onClick={() => { db.setBoardStatus(board.id, board.status === "archived" ? "ready" : "archived"); toast.show(board.status === "archived" ? "הלוח שוחזר מהארכיון" : "הלוח הועבר לארכיון"); }}>
-                {board.status === "archived" ? "שחזר מהארכיון" : "העבר לארכיון"}
+              <Button variant="secondary" block onClick={() => { db.setBoardStatus(board.id, board.status === "archived" ? "ready" : "archived"); toast.show(board.status === "archived" ? t("הלוח שוחזר מהארכיון") : t("הלוח הועבר לארכיון")); }}>
+                {board.status === "archived" ? t("שחזר מהארכיון") : t("העבר לארכיון")}
               </Button>
               <button
                 onClick={() => setConfirmDelete(true)}
@@ -143,7 +145,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
                 style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "1px solid var(--danger)", background: "transparent", color: "var(--danger)", fontWeight: "var(--weight-bold)", fontSize: "var(--text-sm)", height: 40, borderRadius: "var(--radius-lg)", cursor: "pointer" }}
               >
                 <IconTrash size={15} />
-                מחיקה לצמיתות
+                {t("מחיקה לצמיתות")}
               </button>
             </div>
           </div>
@@ -153,20 +155,20 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
       <RoomActivationDialog board={board} open={activateOpen} onClose={() => setActivateOpen(false)} />
       <ConfirmDialog
         open={confirmEnd}
-        title="לכבות את החדר הפעיל?"
-        description="המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים."
-        confirmLabel="כבה מפגש"
+        title={t("לכבות את החדר הפעיל?")}
+        description={t("המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים.")}
+        confirmLabel={t("כבה מפגש")}
         danger
-        onConfirm={() => { if (activeRoom) db.endRoom(activeRoom.id); setConfirmEnd(false); toast.show("המפגש הפעיל נסגר"); }}
+        onConfirm={() => { if (activeRoom) db.endRoom(activeRoom.id); setConfirmEnd(false); toast.show(t("המפגש הפעיל נסגר")); }}
         onCancel={() => setConfirmEnd(false)}
       />
       <ConfirmDialog
         open={confirmDelete}
-        title="למחוק את הלוח לצמיתות?"
-        description={`הלוח "${board.internal_name}" וכל היסטוריית המפגשים והתוכן שנאסף יימחקו לצמיתות. לא ניתן לשחזר פעולה זו. אם ברצונכם לשמור את הנתונים, השתמשו ב"העבר לארכיון" במקום.`}
-        confirmLabel="מחק לצמיתות"
+        title={t("למחוק את הלוח לצמיתות?")}
+        description={t('הלוח "{name}" וכל היסטוריית המפגשים והתוכן שנאסף יימחקו לצמיתות. לא ניתן לשחזר פעולה זו. אם ברצונכם לשמור את הנתונים, השתמשו ב"העבר לארכיון" במקום.', { name: board.internal_name })}
+        confirmLabel={t("מחק לצמיתות")}
         danger
-        onConfirm={() => { db.deleteBoard(board.id); setConfirmDelete(false); toast.show("הלוח נמחק לצמיתות"); router.push("/app/boards"); }}
+        onConfirm={() => { db.deleteBoard(board.id); setConfirmDelete(false); toast.show(t("הלוח נמחק לצמיתות")); router.push("/app/boards"); }}
         onCancel={() => setConfirmDelete(false)}
       />
     </AppShell>

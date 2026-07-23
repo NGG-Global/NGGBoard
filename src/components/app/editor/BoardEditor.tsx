@@ -9,6 +9,7 @@ import { boardFormSchema } from "@/lib/validation";
 import { Button, Input, Radio, Switch, useToast } from "@/components/ui";
 import { IconChevron } from "@/components/ui/icons";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
+import { useI18n } from "@/lib/i18n/react";
 import { EditorSection } from "./EditorSection";
 import { EditorPreview } from "./EditorPreview";
 
@@ -106,6 +107,7 @@ const LAYOUT_LABELS: Record<DisplayLayout, string> = { wall: "קיר כרטיס�
 
 export function BoardEditor({ boardId }: { boardId?: string }) {
   const router = useRouter();
+  const { t, lang } = useI18n();
   const toast = useToast();
   const existing = boardId ? db.getBoard(boardId) : null;
 
@@ -139,7 +141,8 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
     const parsed = boardFormSchema.safeParse(draft);
     if (!parsed.success) {
       const titleIssue = parsed.error.issues.find((i) => i.path[0] === "public_title");
-      setTitleError(titleIssue?.message ?? "יש למלא את השדות הנדרשים");
+      // Schema messages are Hebrew i18n keys — translate at display time.
+      setTitleError(titleIssue ? t(titleIssue.message) : t("יש למלא את השדות הנדרשים"));
       setOpenSec(1);
       return null;
     }
@@ -166,21 +169,22 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
   }
 
   const summaries = useMemo(() => {
-    const perms = [draft.participation.allow_text && "טקסט", draft.participation.allow_image && "תמונות", draft.participation.anonymous_allowed && "אנונימי"]
+    const perms = [draft.participation.allow_text && t("טקסט"), draft.participation.allow_image && t("תמונות"), draft.participation.anonymous_allowed && t("אנונימי")]
       .filter(Boolean)
-      .join(" · ") || "ללא";
+      .join(" · ") || t("ללא");
     return {
-      s1: draft.public_title || "עדיין ללא כותרת",
-      s2: THEME_VISUALS[draft.appearance.background_theme].label,
+      s1: draft.public_title || t("עדיין ללא כותרת"),
+      s2: t(THEME_VISUALS[draft.appearance.background_theme].label),
       s3: perms,
-      s4: draft.moderation.mode === "approval" ? "אישור לפני הצגה" : "הצגה מיידית",
-      s5: SHARE_LABELS[draft.sharing],
-      s6: LAYOUT_LABELS[draft.default_layout],
-      s7: draft.zones.length >= 2 ? `${draft.zones.length} אזורים` : "ללא חלוקה",
+      s4: draft.moderation.mode === "approval" ? t("אישור לפני הצגה") : t("הצגה מיידית"),
+      s5: t(SHARE_LABELS[draft.sharing]),
+      s6: t(LAYOUT_LABELS[draft.default_layout]),
+      s7: draft.zones.length >= 2 ? t("{count} אזורים", { count: draft.zones.length }) : t("ללא חלוקה"),
     };
-  }, [draft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `lang` re-derives the translated summaries on language change.
+  }, [draft, lang]);
 
-  const saveState = titleError ? "שגיאה — חסרה כותרת" : dirty ? "שינויים לא נשמרו" : existing ? "נשמר" : "טיוטה חדשה";
+  const saveState = titleError ? t("שגיאה — חסרה כותרת") : dirty ? t("שינויים לא נשמרו") : existing ? t("נשמר") : t("טיוטה חדשה");
   const saveStateColor = titleError ? "var(--danger)" : dirty ? "var(--warning)" : "var(--text-subtle)";
 
   function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -192,15 +196,15 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
   }
 
   return (
-    <div dir="rtl" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
       {/* Header */}
       <header style={{ height: 60, flex: "none", display: "flex", alignItems: "center", gap: 14, padding: "0 20px", background: "var(--surface)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 10 }}>
         <button onClick={() => router.push("/app/boards")} className="ngg-hover" style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: "7px 10px", borderRadius: "var(--radius-lg)" }}>
           <IconChevron size={15} strokeWidth={2.2} />
-          הלוחות שלי
+          {t("הלוחות שלי")}
         </button>
         <div style={{ width: 1, height: 24, background: "var(--border)" }} />
-        <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>{existing ? "עריכת לוח" : "לוח חדש"}</div>
+        <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>{existing ? t("עריכת לוח") : t("לוח חדש")}</div>
         <div style={{ fontSize: "var(--text-2xs)", color: saveStateColor, fontWeight: "var(--weight-semibold)" }}>{saveState}</div>
         <div style={{ flex: 1 }} />
         <Button
@@ -209,12 +213,12 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
           onClick={() => {
             const saved = doSave();
             if (saved) {
-              toast.show("הלוח נשמר — מוכן להפעלה");
+              toast.show(t("הלוח נשמר — מוכן להפעלה"));
               router.push(`/app/boards/${saved.id}`);
             }
           }}
         >
-          שמור
+          {t("שמור")}
         </Button>
         <Button
           variant="primary"
@@ -224,37 +228,37 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
             if (saved) setActivateOpen(true);
           }}
         >
-          שמור והפעל חדר
+          {t("שמור והפעל חדר")}
         </Button>
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0, flexWrap: "wrap" }}>
         {/* Config panel */}
         <div style={{ width: 396, flex: "1 1 340px", maxWidth: 460, overflowY: "auto", background: "var(--surface)", borderInlineEnd: "1px solid var(--border)", padding: "18px 18px 40px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <EditorSection index={1} title="פרטים בסיסיים" summary={summaries.s1} open={openSec === 1} onToggle={() => setOpenSec(openSec === 1 ? 0 : 1)} error={!!titleError}>
-            <Input label="כותרת ציבורית" required value={draft.public_title} onChange={(e) => patch({ public_title: e.target.value })} error={titleError} hint="הכותרת שהמשתתפים והקהל יראו" />
-            <Input label="הנחיה למשתתפים" value={draft.public_subtitle} onChange={(e) => patch({ public_subtitle: e.target.value })} hint="שאלה או משימה קצרה, למשל: מה לוקחים מהסדנה?" />
-            <Input label="שם פנימי" value={draft.internal_name} onChange={(e) => patch({ internal_name: e.target.value })} hint="רק אתם רואים אותו — לזיהוי ברשימת הלוחות" />
-            <Input label="תיקייה / צוות" value={draft.folder ?? ""} onChange={(e) => patch({ folder: e.target.value || null })} hint="לארגון הלוחות, למשל: סדנאות, אירועים" />
+          <EditorSection index={1} title={t("פרטים בסיסיים")} summary={summaries.s1} open={openSec === 1} onToggle={() => setOpenSec(openSec === 1 ? 0 : 1)} error={!!titleError}>
+            <Input label={t("כותרת ציבורית")} required value={draft.public_title} onChange={(e) => patch({ public_title: e.target.value })} error={titleError} hint={t("הכותרת שהמשתתפים והקהל יראו")} />
+            <Input label={t("הנחיה למשתתפים")} value={draft.public_subtitle} onChange={(e) => patch({ public_subtitle: e.target.value })} hint={t("שאלה או משימה קצרה, למשל: מה לוקחים מהסדנה?")} />
+            <Input label={t("שם פנימי")} value={draft.internal_name} onChange={(e) => patch({ internal_name: e.target.value })} hint={t("רק אתם רואים אותו — לזיהוי ברשימת הלוחות")} />
+            <Input label={t("תיקייה / צוות")} value={draft.folder ?? ""} onChange={(e) => patch({ folder: e.target.value || null })} hint={t("לארגון הלוחות, למשל: סדנאות, אירועים")} />
           </EditorSection>
 
-          <EditorSection index={2} title="עיצוב" summary={summaries.s2} open={openSec === 2} onToggle={() => setOpenSec(openSec === 2 ? 0 : 2)}>
+          <EditorSection index={2} title={t("עיצוב")} summary={summaries.s2} open={openSec === 2} onToggle={() => setOpenSec(openSec === 2 ? 0 : 2)}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>רקע</div>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("רקע")}</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(Object.keys(THEME_VISUALS) as BackgroundTheme[]).map((t) => (
+                {(Object.keys(THEME_VISUALS) as BackgroundTheme[]).map((theme) => (
                   <button
-                    key={t}
-                    onClick={() => patchAppearance({ background_theme: t, background_color: null })}
-                    title={THEME_VISUALS[t].label}
-                    aria-label={`רקע ${THEME_VISUALS[t].label}`}
-                    aria-pressed={draft.appearance.background_theme === t && !draft.appearance.background_color}
+                    key={theme}
+                    onClick={() => patchAppearance({ background_theme: theme, background_color: null })}
+                    title={t(THEME_VISUALS[theme].label)}
+                    aria-label={t("רקע {name}", { name: t(THEME_VISUALS[theme].label) })}
+                    aria-pressed={draft.appearance.background_theme === theme && !draft.appearance.background_color}
                     style={{
                       width: 52,
                       height: 38,
                       borderRadius: "var(--radius-lg)",
-                      border: `2px solid ${draft.appearance.background_theme === t && !draft.appearance.background_color ? "var(--magenta-500)" : "var(--border)"}`,
-                      background: THEME_VISUALS[t].background,
+                      border: `2px solid ${draft.appearance.background_theme === theme && !draft.appearance.background_color ? "var(--magenta-500)" : "var(--border)"}`,
+                      background: THEME_VISUALS[theme].background,
                       cursor: "pointer",
                     }}
                   />
@@ -262,7 +266,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>לוגו לקוח</div>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("לוגו לקוח")}</div>
               <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoFile} style={{ display: "none" }} />
               <button
                 onClick={() => (draft.appearance.client_logo_url ? patchAppearance({ client_logo_url: null }) : logoInputRef.current?.click())}
@@ -280,12 +284,12 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
                   cursor: "pointer",
                 }}
               >
-                {draft.appearance.client_logo_url ? "לוגו הועלה — לחצו להסרה" : "גררו קובץ לוגו או לחצו להעלאה"}
+                {draft.appearance.client_logo_url ? t("לוגו הועלה — לחצו להסרה") : t("גררו קובץ לוגו או לחצו להעלאה")}
               </button>
             </div>
-            <Switch label="הצג לוגו NGG בפינת המסך" checked={draft.appearance.show_org_logo} onChange={(v) => patchAppearance({ show_org_logo: v })} />
+            <Switch label={t("הצג לוגו NGG בפינת המסך")} checked={draft.appearance.show_org_logo} onChange={(v) => patchAppearance({ show_org_logo: v })} />
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>גודל טקסט על המסך</div>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("גודל טקסט על המסך")}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {(["sm", "md", "lg"] as const).map((s) => (
                   <button
@@ -304,81 +308,81 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
                       cursor: "pointer",
                     }}
                   >
-                    {s === "sm" ? "קטן" : s === "md" ? "רגיל" : "גדול"}
+                    {s === "sm" ? t("קטן") : s === "md" ? t("רגיל") : t("גדול")}
                   </button>
                 ))}
               </div>
             </div>
           </EditorSection>
 
-          <EditorSection index={3} title="מה המשתתפים יכולים לשלוח" summary={summaries.s3} open={openSec === 3} onToggle={() => setOpenSec(openSec === 3 ? 0 : 3)}>
-            <Switch label="תשובות טקסט" description="המשתתפים כותבים תשובה קצרה מהנייד" checked={draft.participation.allow_text} onChange={(v) => patchParticipation({ allow_text: v })} />
-            <Switch label="תמונות" description="צילום או העלאה מהגלריה" checked={draft.participation.allow_image} onChange={(v) => patchParticipation({ allow_image: v })} />
-            <Switch label="מצב אנונימי" description="שמות המשתתפים לא יוצגו על המסך" checked={draft.participation.anonymous_allowed} onChange={(v) => patchParticipation({ anonymous_allowed: v })} />
+          <EditorSection index={3} title={t("מה המשתתפים יכולים לשלוח")} summary={summaries.s3} open={openSec === 3} onToggle={() => setOpenSec(openSec === 3 ? 0 : 3)}>
+            <Switch label={t("תשובות טקסט")} description={t("המשתתפים כותבים תשובה קצרה מהנייד")} checked={draft.participation.allow_text} onChange={(v) => patchParticipation({ allow_text: v })} />
+            <Switch label={t("תמונות")} description={t("צילום או העלאה מהגלריה")} checked={draft.participation.allow_image} onChange={(v) => patchParticipation({ allow_image: v })} />
+            <Switch label={t("מצב אנונימי")} description={t("שמות המשתתפים לא יוצגו על המסך")} checked={draft.participation.anonymous_allowed} onChange={(v) => patchParticipation({ anonymous_allowed: v })} />
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>שם המשתתף</div>
-              <Radio name="namepolicy" label="לא נדרש שם" checked={draft.participation.name_policy === "disabled"} onChange={() => patchParticipation({ name_policy: "disabled" })} />
-              <Radio name="namepolicy" label="שם אופציונלי" checked={draft.participation.name_policy === "optional"} onChange={() => patchParticipation({ name_policy: "optional" })} />
-              <Radio name="namepolicy" label="שם חובה" checked={draft.participation.name_policy === "required"} onChange={() => patchParticipation({ name_policy: "required" })} />
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("שם המשתתף")}</div>
+              <Radio name="namepolicy" label={t("לא נדרש שם")} checked={draft.participation.name_policy === "disabled"} onChange={() => patchParticipation({ name_policy: "disabled" })} />
+              <Radio name="namepolicy" label={t("שם אופציונלי")} checked={draft.participation.name_policy === "optional"} onChange={() => patchParticipation({ name_policy: "optional" })} />
+              <Radio name="namepolicy" label={t("שם חובה")} checked={draft.participation.name_policy === "required"} onChange={() => patchParticipation({ name_policy: "required" })} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>כמה פעמים אפשר לשלוח</div>
-              <Radio name="multi" label="שליחה אחת לכל משתתף" checked={!draft.participation.multiple_submissions} onChange={() => patchParticipation({ multiple_submissions: false })} />
-              <Radio name="multi" label="כמה שרוצים" checked={draft.participation.multiple_submissions} onChange={() => patchParticipation({ multiple_submissions: true })} />
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("כמה פעמים אפשר לשלוח")}</div>
+              <Radio name="multi" label={t("שליחה אחת לכל משתתף")} checked={!draft.participation.multiple_submissions} onChange={() => patchParticipation({ multiple_submissions: false })} />
+              <Radio name="multi" label={t("כמה שרוצים")} checked={draft.participation.multiple_submissions} onChange={() => patchParticipation({ multiple_submissions: true })} />
             </div>
-            <Input label="מגבלת תווים לתשובת טקסט" type="number" value={String(draft.participation.text_char_limit)} onChange={(e) => patchParticipation({ text_char_limit: Math.max(20, Number(e.target.value) || 0) })} />
+            <Input label={t("מגבלת תווים לתשובת טקסט")} type="number" value={String(draft.participation.text_char_limit)} onChange={(e) => patchParticipation({ text_char_limit: Math.max(20, Number(e.target.value) || 0) })} />
           </EditorSection>
 
-          <EditorSection index={4} title="אישור תוכן" summary={summaries.s4} open={openSec === 4} onToggle={() => setOpenSec(openSec === 4 ? 0 : 4)}>
+          <EditorSection index={4} title={t("אישור תוכן")} summary={summaries.s4} open={openSec === 4} onToggle={() => setOpenSec(openSec === 4 ? 0 : 4)}>
             <ModeCard
-              title="הצג את התוכן מיד"
-              description="כל תשובה מופיעה על המסך ברגע שנשלחת"
+              title={t("הצג את התוכן מיד")}
+              description={t("כל תשובה מופיעה על המסך ברגע שנשלחת")}
               selected={draft.moderation.mode === "immediate"}
               onClick={() => patchModeration({ mode: "immediate" })}
             />
             <ModeCard
-              title="העבר לאישור לפני שיופיע"
-              description="התוכן מגיע קודם לתור אצל המנחה, ומופיע רק אחרי אישור"
+              title={t("העבר לאישור לפני שיופיע")}
+              description={t("התוכן מגיע קודם לתור אצל המנחה, ומופיע רק אחרי אישור")}
               selected={draft.moderation.mode === "approval"}
               onClick={() => patchModeration({ mode: "approval" })}
             />
             <details style={{ marginTop: 2 }}>
-              <summary style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-muted)", cursor: "pointer" }}>הגדרות מתקדמות</summary>
+              <summary style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-muted)", cursor: "pointer" }}>{t("הגדרות מתקדמות")}</summary>
               <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 12 }}>
-                <Switch label="הסתר שמות משתתפים על המסך" checked={draft.moderation.hide_identity_on_display} onChange={(v) => patchModeration({ hide_identity_on_display: v })} />
+                <Switch label={t("הסתר שמות משתתפים על המסך")} checked={draft.moderation.hide_identity_on_display} onChange={(v) => patchModeration({ hide_identity_on_display: v })} />
                 <Input
-                  label="מילים חסומות (מופרדות בפסיק)"
+                  label={t("מילים חסומות (מופרדות בפסיק)")}
                   value={draft.moderation.blocked_words.join(", ")}
                   onChange={(e) => patchModeration({ blocked_words: e.target.value.split(",").map((w) => w.trim()).filter(Boolean) })}
-                  hint="תוכן שמכיל מילים אלו יימנע מהמשתתפים"
+                  hint={t("תוכן שמכיל מילים אלו יימנע מהמשתתפים")}
                 />
               </div>
             </details>
           </EditorSection>
 
-          <EditorSection index={5} title="שיתוף" summary={summaries.s5} open={openSec === 5} onToggle={() => setOpenSec(openSec === 5 ? 0 : 5)}>
-            <Radio name="share" label="פרטי" description="רק אתם יכולים לערוך ולהפעיל" checked={draft.sharing === "private"} onChange={() => patch({ sharing: "private" })} />
-            <Radio name="share" label="אנשים נבחרים" description="תבחרו מי עוד יכול להנחות עם הלוח" checked={draft.sharing === "selected"} onChange={() => patch({ sharing: "selected" })} />
-            <Radio name="share" label="כל הארגון" description="כל עובד יוכל למצוא ולשכפל את הלוח" checked={draft.sharing === "organization"} onChange={() => patch({ sharing: "organization" })} />
+          <EditorSection index={5} title={t("שיתוף")} summary={summaries.s5} open={openSec === 5} onToggle={() => setOpenSec(openSec === 5 ? 0 : 5)}>
+            <Radio name="share" label={t("פרטי")} description={t("רק אתם יכולים לערוך ולהפעיל")} checked={draft.sharing === "private"} onChange={() => patch({ sharing: "private" })} />
+            <Radio name="share" label={t("אנשים נבחרים")} description={t("תבחרו מי עוד יכול להנחות עם הלוח")} checked={draft.sharing === "selected"} onChange={() => patch({ sharing: "selected" })} />
+            <Radio name="share" label={t("כל הארגון")} description={t("כל עובד יוכל למצוא ולשכפל את הלוח")} checked={draft.sharing === "organization"} onChange={() => patch({ sharing: "organization" })} />
           </EditorSection>
 
-          <EditorSection index={6} title="פריסת תצוגה" summary={summaries.s6} open={openSec === 6} onToggle={() => setOpenSec(openSec === 6 ? 0 : 6)}>
-            <LayoutCard layout="wall" title="קיר כרטיסים" desc="כרטיסים אחידים — מתאים לתשובות טקסט קצרות" selected={draft.default_layout === "wall"} onClick={() => patch({ default_layout: "wall" })} />
-            <LayoutCard layout="mosaic" title="פסיפס" desc="גדלים משתנים — כשיש הרבה תמונות" selected={draft.default_layout === "mosaic"} onClick={() => patch({ default_layout: "mosaic" })} />
-            <LayoutCard layout="feed" title="פיד חי" desc="תוכן חדש קופץ קדימה — לאירועים מהירים" selected={draft.default_layout === "feed"} onClick={() => patch({ default_layout: "feed" })} />
+          <EditorSection index={6} title={t("פריסת תצוגה")} summary={summaries.s6} open={openSec === 6} onToggle={() => setOpenSec(openSec === 6 ? 0 : 6)}>
+            <LayoutCard layout="wall" title={t("קיר כרטיסים")} desc={t("כרטיסים אחידים — מתאים לתשובות טקסט קצרות")} selected={draft.default_layout === "wall"} onClick={() => patch({ default_layout: "wall" })} />
+            <LayoutCard layout="mosaic" title={t("פסיפס")} desc={t("גדלים משתנים — כשיש הרבה תמונות")} selected={draft.default_layout === "mosaic"} onClick={() => patch({ default_layout: "mosaic" })} />
+            <LayoutCard layout="feed" title={t("פיד חי")} desc={t("תוכן חדש קופץ קדימה — לאירועים מהירים")} selected={draft.default_layout === "feed"} onClick={() => patch({ default_layout: "feed" })} />
             <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 4 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>סדר הצגה</div>
-              <Radio name="sort" label="החדש ביותר קודם" checked={draft.default_sort === "newest"} onChange={() => patch({ default_sort: "newest" })} />
-              <Radio name="sort" label="הישן ביותר קודם" checked={draft.default_sort === "oldest"} onChange={() => patch({ default_sort: "oldest" })} />
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("סדר הצגה")}</div>
+              <Radio name="sort" label={t("החדש ביותר קודם")} checked={draft.default_sort === "newest"} onChange={() => patch({ default_sort: "newest" })} />
+              <Radio name="sort" label={t("הישן ביותר קודם")} checked={draft.default_sort === "oldest"} onChange={() => patch({ default_sort: "oldest" })} />
             </div>
           </EditorSection>
 
-          <EditorSection index={7} title="חלוקה לאזורים" summary={summaries.s7} open={openSec === 7} onToggle={() => setOpenSec(openSec === 7 ? 0 : 7)}>
+          <EditorSection index={7} title={t("חלוקה לאזורים")} summary={summaries.s7} open={openSec === 7} onToggle={() => setOpenSec(openSec === 7 ? 0 : 7)}>
             <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
-              חלקו את הלוח לאזורים. המשתתפים יבחרו לאיזה אזור לשלוח, והתוכן יופיע באזור שנבחר על המסך.
+              {t("חלקו את הלוח לאזורים. המשתתפים יבחרו לאיזה אזור לשלוח, והתוכן יופיע באזור שנבחר על המסך.")}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>מספר אזורים</div>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("מספר אזורים")}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {[1, 2, 3, 4].map((n) => {
                   const active = (draft.zones.length || 1) === n;
@@ -389,7 +393,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
                       aria-pressed={active}
                       style={{ flex: 1, padding: "10px", borderRadius: "var(--radius-md)", border: `1.5px solid ${active ? "var(--magenta-500)" : "var(--border)"}`, background: active ? "var(--accent-soft)" : "var(--surface)", color: active ? "var(--accent-text)" : "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", cursor: "pointer" }}
                     >
-                      {n === 1 ? "ללא" : n}
+                      {n === 1 ? t("ללא") : n}
                     </button>
                   );
                 })}
@@ -398,24 +402,24 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
             {draft.zones.length >= 2 &&
               draft.zones.map((z, i) => (
                 <div key={z.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, background: "var(--bg-subtle)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)" }}>
-                  <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>אזור {i + 1}</div>
+                  <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>{t("אזור {number}", { number: i + 1 })}</div>
                   <Input
-                    label="כותרת האזור"
+                    label={t("כותרת האזור")}
                     value={z.title}
                     onChange={(e) => {
                       const zones = draft.zones.map((x, xi) => (xi === i ? { ...x, title: e.target.value } : x));
                       patch({ zones });
                     }}
-                    placeholder="למשל: לשמר"
+                    placeholder={t("למשל: לשמר")}
                   />
                   <Input
-                    label="תת־כותרת"
+                    label={t("תת־כותרת")}
                     value={z.subtitle}
                     onChange={(e) => {
                       const zones = draft.zones.map((x, xi) => (xi === i ? { ...x, subtitle: e.target.value } : x));
                       patch({ zones });
                     }}
-                    placeholder="הסבר קצר על האזור"
+                    placeholder={t("הסבר קצר על האזור")}
                   />
                 </div>
               ))}
@@ -425,7 +429,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
         {/* Live preview */}
         <div style={{ flex: "2 1 480px", minWidth: 320, overflowY: "auto", padding: 26, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-xs)", color: "var(--text-subtle)", fontWeight: "var(--weight-semibold)" }}>
-            תצוגה מקדימה — כך ייראה המסך המשותף
+            {t("תצוגה מקדימה — כך ייראה המסך המשותף")}
           </div>
           <EditorPreview
             title={draft.public_title}
@@ -435,7 +439,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
             layout={draft.default_layout}
           />
           <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
-            פריסה נבחרת: {LAYOUT_LABELS[draft.default_layout]} · הרקע והלוגו מתעדכנים בזמן אמת
+            {t("פריסה נבחרת: {layout} · הרקע והלוגו מתעדכנים בזמן אמת", { layout: t(LAYOUT_LABELS[draft.default_layout]) })}
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import QRCode from "qrcode";
+import { useI18n } from "@/lib/i18n/react";
 
 export interface QRCodeProps {
   value: string;
@@ -15,6 +16,7 @@ export interface QRCodeProps {
 
 /** Renders a real, scannable QR code to a canvas via the `qrcode` library. */
 export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ffffff", className, style }: QRCodeProps) {
+  const { t } = useI18n();
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ff
       width={size * 2}
       height={size * 2}
       role="img"
-      aria-label={`קוד QR להצטרפות: ${value}`}
+      aria-label={t("קוד QR להצטרפות: {value}", { value })}
       className={className}
       style={{ width: size, height: size, maxWidth: "none", display: "block", borderRadius: "var(--radius-lg)", ...style }}
     />

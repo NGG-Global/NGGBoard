@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { Board, LiveRoom, Submission } from "@/lib/types";
+import { t as translate } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/react";
 import { boardZones, FONT_SCALE_FACTOR, isZoned, themeVisual } from "@/lib/board-visuals";
 import { formatRoomCode } from "@/lib/utils";
 import { QRCodeCanvas, LiveDot } from "@/components/ui";
@@ -44,6 +46,7 @@ function pageSizeFor(layout: Board["default_layout"], count: number): number {
 }
 
 export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip }: Props) {
+  const { t } = useI18n();
   const v = themeVisual(board.appearance);
   const zoned = isZoned(board);
   const facFor = (s: Submission) =>
@@ -111,7 +114,6 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
 
   return (
     <div
-      dir="rtl"
       style={{
         height: "100%",
         width: "100%",
@@ -129,7 +131,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
       <header style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: "clamp(12px, 2vh, 28px)" }}>
         {board.appearance.client_logo_url && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={board.appearance.client_logo_url} alt="לוגו לקוח" style={{ height: "clamp(28px, 4vh, 52px)", background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: 6 }} />
+          <img src={board.appearance.client_logo_url} alt={t("לוגו לקוח")} style={{ height: "clamp(28px, 4vh, 52px)", background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: 6 }} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: `clamp(28px, ${3.4 * baseScale}vw, ${72 * baseScale}px)`, fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)", color: textColor }}>
@@ -213,7 +215,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
       {focused && (
         <div
           onClick={facilitator ? () => facilitator.onFocus(focused.id) : undefined}
-          title={facilitator ? "לחצו להסרה מהמסך" : undefined}
+          title={facilitator ? t("לחצו להסרה מהמסך") : undefined}
           style={{ position: "absolute", inset: 0, background: v.dark ? "rgba(8,8,16,.72)" : "rgba(255,255,255,.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(40px, 6vw, 120px)", zIndex: 40, cursor: facilitator ? "zoom-out" : "default" }}
         >
           <div style={{ width: "min(1100px, 100%)", maxHeight: "100%" }} onClick={(e) => e.stopPropagation()}>
@@ -225,7 +227,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
       {/* QR overlay (facilitator-triggered) */}
       {room.qr_overlay_visible && !focused && (
         <div className="theme-dark" style={{ position: "absolute", inset: 0, background: "rgba(8,8,16,.88)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 26, zIndex: 50, color: "#fff" }}>
-          <div style={{ fontSize: "clamp(28px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>הצטרפו למפגש</div>
+          <div style={{ fontSize: "clamp(28px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>{t("הצטרפו למפגש")}</div>
           <div style={{ background: "#fff", padding: 20, borderRadius: "var(--radius-2xl)" }}>
             <QRCodeCanvas value={joinUrl} size={280} />
           </div>
@@ -249,8 +251,8 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
       {room.status === "ended" && (
         <div className="theme-dark" style={{ position: "absolute", inset: 0, background: "var(--gradient-ink)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, zIndex: 60, color: "#f4f4f6" }}>
           <Image src="/brand/ngg-mark.png" alt="" width={54} height={47} style={{ height: 47, width: "auto", opacity: 0.85 }} />
-          <div style={{ fontSize: "clamp(30px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>המפגש הסתיים</div>
-          <div style={{ fontSize: "var(--text-lg)", color: "var(--neutral-400)" }}>תודה על ההשתתפות</div>
+          <div style={{ fontSize: "clamp(30px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>{t("המפגש הסתיים")}</div>
+          <div style={{ fontSize: "var(--text-lg)", color: "var(--neutral-400)" }}>{t("תודה על ההשתתפות")}</div>
         </div>
       )}
     </div>
@@ -275,6 +277,7 @@ function ZonedContent({
   facFor: (s: Submission) => FacilitatorCardActions | undefined;
   scrollable: boolean;
 }) {
+  const { t } = useI18n();
   const firstZoneId = zones[0]?.id;
   const byZone = new Map<string, Submission[]>();
   for (const z of zones) byZone.set(z.id, []);
@@ -295,13 +298,13 @@ function ZonedContent({
           <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, height: "100%", borderInlineStart: i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: i > 0 ? "clamp(8px, 1vw, 18px)" : 0 }}>
             <div style={{ flex: "none", paddingBottom: 10, marginBottom: 10, borderBottom: `2px solid ${divider}` }}>
               <div style={{ fontSize: `clamp(16px, ${1.4 * scale}vw, ${28 * scale}px)`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
-                {z.title || `אזור ${i + 1}`}
+                {z.title || t("אזור {number}", { number: i + 1 })}
               </div>
               {z.subtitle && <div style={{ fontSize: `clamp(11px, ${0.9 * scale}vw, ${16 * scale}px)`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
             </div>
             <div className={scrollable ? undefined : "ngg-no-scrollbar"} style={{ flex: 1, minHeight: 0, overflowY: scrollable ? "auto" : "hidden", overflowX: "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
               {items.length === 0 ? (
-                <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>עדיין אין תוכן באזור זה</div>
+                <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
               ) : (
                 (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} />)
               )}
@@ -314,17 +317,18 @@ function ZonedContent({
 }
 
 function statusOverlay(room: LiveRoom): { label: string; icon: React.ReactNode; bg: string; fg: string } | null {
-  if (room.status === "paused") return { label: "קבלת התוכן מושהית", icon: <IconPause size={20} />, bg: "var(--warning)", fg: "#fff" };
-  if (room.status === "read_only") return { label: "מצב קריאה בלבד", icon: <IconLock size={18} />, bg: "var(--info)", fg: "#fff" };
-  if (room.status === "suspended") return { label: "החדר הושהה זמנית", icon: <IconClock size={18} />, bg: "var(--warning)", fg: "#fff" };
+  if (room.status === "paused") return { label: translate("קבלת התוכן מושהית"), icon: <IconPause size={20} />, bg: "var(--warning)", fg: "#fff" };
+  if (room.status === "read_only") return { label: translate("מצב קריאה בלבד"), icon: <IconLock size={18} />, bg: "var(--info)", fg: "#fff" };
+  if (room.status === "suspended") return { label: translate("החדר הושהה זמנית"), icon: <IconClock size={18} />, bg: "var(--warning)", fg: "#fff" };
   return null;
 }
 
 function EmptyDisplay({ joinUrl, roomCode, dark }: { joinUrl: string; roomCode: string; dark: boolean }) {
+  const { t } = useI18n();
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28 }}>
       <div style={{ fontSize: "clamp(22px, 3vw, 40px)", fontWeight: "var(--weight-extrabold)", color: dark ? "#fff" : "var(--neutral-900)", textAlign: "center" }}>
-        סרקו את הקוד כדי להצטרף ולשלוח את התוכן הראשון
+        {t("סרקו את הקוד כדי להצטרף ולשלוח את התוכן הראשון")}
       </div>
       <div style={{ background: "#fff", padding: 24, borderRadius: "var(--radius-2xl)", boxShadow: "var(--shadow-xl)", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
         <QRCodeCanvas value={joinUrl} size={240} />
@@ -332,7 +336,7 @@ function EmptyDisplay({ joinUrl, roomCode, dark }: { joinUrl: string; roomCode: 
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, color: dark ? "rgba(255,255,255,.8)" : "var(--neutral-700)", fontSize: "var(--text-lg)" }}>
         <LiveDot light={dark} />
-        ממתין למשתתפים…
+        {t("ממתין למשתתפים…")}
       </div>
     </div>
   );
