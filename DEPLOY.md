@@ -25,10 +25,14 @@ Preview if you want preview deploys to hit Supabase too):
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://ljrnmcpnbduuzjjnmdpw.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *your anon (public) key* |
 | `NEXT_PUBLIC_APP_URL` | your Vercel URL, e.g. `https://ngg-boards.vercel.app` |
+| `GIPHY_API_KEY` | *your Giphy API key* (server-only secret — enables the participant GIF/sticker picker) |
 
-All four are public client values (the anon key is designed to ship in the
-browser bundle). Do **not** add the service-role key here — it's only for the
-server-side inactivity sweep (Supabase Edge Function / pg_cron).
+The four `NEXT_PUBLIC_*` entries are public client values (the anon key is
+designed to ship in the browser bundle). `GIPHY_API_KEY` is a **server-only
+secret**: it is read exclusively by the `/api/giphy` route and must not be
+renamed with a `NEXT_PUBLIC_` prefix. Do **not** add the Supabase service-role
+key here — it's only for the server-side inactivity sweep (Supabase Edge
+Function / pg_cron).
 
 > To leave production on the safe local demo backend instead, set
 > `NEXT_PUBLIC_DATA_BACKEND=local` (or omit it).

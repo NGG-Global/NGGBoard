@@ -36,6 +36,7 @@ function defaultParticipation(overrides: Partial<Board["participation"]> = {}): 
   return {
     allow_text: true,
     allow_image: true,
+    allow_giphy: true,
     name_policy: "optional",
     anonymous_allowed: true,
     multiple_submissions: true,

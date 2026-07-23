@@ -47,6 +47,8 @@ export type SharingLevel = "private" | "selected" | "team" | "organization" | "l
 export interface BoardParticipationSettings {
   allow_text: boolean;
   allow_image: boolean;
+  /** Allow picking a GIF / sticker from the Giphy library. */
+  allow_giphy: boolean;
   name_policy: NamePolicy;
   anonymous_allowed: boolean;
   multiple_submissions: boolean;

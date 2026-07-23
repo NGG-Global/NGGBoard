@@ -211,6 +211,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server-only
 NEXT_PUBLIC_APP_URL=https://boards.yourdomain.com
+GIPHY_API_KEY=your-giphy-api-key                  # server-only (GIF picker)
 ```
 
 ### 6. The Supabase data client (already implemented)
@@ -245,6 +246,29 @@ warning**; the server function is the authoritative 30-minute suspension.
 
 ---
 
+## GIF & sticker submissions (Giphy)
+
+Participants can search and send GIFs / stickers from the Giphy library (a
+third content option next to text and images; toggled per board in the editor's
+participation section, `allow_giphy`).
+
+- **Key handling:** the browser never sees the Giphy key. The picker calls the
+  app's `/api/giphy` route, and the server signs the upstream request with the
+  `GIPHY_API_KEY` environment variable (no `NEXT_PUBLIC_` prefix — server-only).
+  Set it in `.env.local` for development and in the host's environment
+  variables for production. If unset, the picker shows a friendly
+  "temporarily unavailable" state; everything else keeps working.
+- **Content rating** is pinned server-side to `pg` (workshop-appropriate), and
+  the proxy clamps/sanitises all client-supplied parameters.
+- **Storage:** a chosen GIF is a regular `image` submission whose `media_url`
+  points at Giphy's CDN — a short URL, so it flows through moderation, the
+  projector display, results and both data backends with no schema change.
+- Hebrew searches are passed with `lang=he` for better results, and the picker
+  shows trending content before the participant types.
+- **Supabase backend:** run `supabase/migrations/0008_giphy.sql` (after `0007`)
+  so the server-side submission policy honours `allow_giphy` — it lets a board
+  accept GIFs while photo uploads are off, and vice versa.
+
 ## Manual QA checklist
 
 **Desktop facilitator flow**
@@ -261,6 +285,7 @@ warning**; the server function is the authoritative 30-minute suspension.
 - [ ] Join by link and by 6-digit code
 - [ ] Name required / optional / disabled behaves per board config
 - [ ] Text submit with char counter; image capture + gallery + replace/remove
+- [ ] GIF/sticker picker: trending on open, Hebrew search, tab switch, load more, replace, caption, send
 - [ ] Correct confirmation (published vs "waiting for approval")
 - [ ] Blocked from submitting to paused / suspended / ended rooms
 - [ ] Duplicate + rapid-submit protection

@@ -185,6 +185,16 @@ export const IconText = (p: IconProps) => (
   </Svg>
 );
 
+/** Sticker with a folded corner and a smile (Lucide-style geometry). */
+export const IconSticker = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" />
+    <path d="M15 3v4a2 2 0 0 0 2 2h4" />
+    <path d="M8 13h.01M13 13h.01" />
+    <path d="M8.5 16.5s1 1 2.5 1 2.5-1 2.5-1" />
+  </Svg>
+);
+
 export const IconCamera = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h0a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

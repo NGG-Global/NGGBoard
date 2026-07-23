@@ -4,6 +4,7 @@ import type { Board, Submission } from "@/lib/types";
 import { useI18n } from "@/lib/i18n/react";
 import { formatAgo, initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
+import { isGiphyMediaUrl } from "@/lib/giphy";
 import { avatarColors } from "@/components/display/DisplaySubmission";
 import {
   IconCheck,
@@ -81,7 +82,7 @@ export function ControlSubmissionCard({
         <div style={{ height: 118, borderRadius: "var(--radius-lg)", overflow: "hidden", background: isSeedImage(submission.media_url) ? seedGradientFor(submission.media_url) : undefined, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {!isSeedImage(submission.media_url) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: isGiphyMediaUrl(submission.media_url) ? "contain" : "cover" }} />
           )}
         </div>
       )}

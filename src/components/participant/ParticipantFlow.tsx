@@ -11,10 +11,12 @@ import { findBlockedWord, sanitizeText } from "@/lib/utils";
 import { validateSubmissionText } from "@/lib/validation";
 import { Button, Input, Spinner } from "@/components/ui";
 import { LanguageToggle, useI18n } from "@/lib/i18n/react";
-import { IconCheck, IconClock, IconImage, IconText, IconWarning, IconWifiOff } from "@/components/ui/icons";
+import { IconCheck, IconClock, IconImage, IconSticker, IconText, IconWarning, IconWifiOff } from "@/components/ui/icons";
 import { ImageUploadField } from "./ImageUploadField";
+import { GiphyPicker } from "./GiphyPicker";
+import type { GiphyPickerItem } from "@/lib/giphy";
 
-type Step = "join" | "zone" | "choose" | "text" | "image" | "done";
+type Step = "join" | "zone" | "choose" | "text" | "image" | "gif" | "done";
 
 function sessionKey(publicId: string) {
   return `ngg_participant_${publicId}`;
@@ -96,6 +98,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 
   const canText = board.participation.allow_text;
   const canImage = board.participation.allow_image;
+  const canGif = board.participation.allow_giphy;
   const allowMultiple = board.participation.multiple_submissions;
   const limitReached = !allowMultiple && mySubs.length > 0;
   const zoned = isZoned(board);
@@ -154,7 +157,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
       )}
 
       {/* Zone picker (zoned boards). Also guards choose/compose if no zone yet. */}
-      {((step === "zone") || (zoned && !zoneId && (step === "choose" || step === "text" || step === "image"))) && (
+      {((step === "zone") || (zoned && !zoneId && (step === "choose" || step === "text" || step === "image" || step === "gif"))) && (
         <ZoneStep
           zones={zones}
           onPick={(id) => { setZoneId(id); setStep("choose"); }}
@@ -165,12 +168,14 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
         <ChooseStep
           canText={canText}
           canImage={canImage}
+          canGif={canGif}
           limitReached={limitReached}
           submittedCount={mySubs.length}
           zone={selectedZone}
           onChangeZone={zoned ? () => setStep("zone") : undefined}
           onText={() => setStep("text")}
           onImage={() => setStep("image")}
+          onGif={() => setStep("gif")}
         />
       )}
 
@@ -188,6 +193,18 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 
       {step === "image" && sessionId && (!zoned || zoneId) && (
         <ImageStep
+          room={room}
+          board={board}
+          sessionId={sessionId}
+          displayName={name}
+          zone={selectedZone}
+          onDone={() => setStep("done")}
+          onBack={() => setStep("choose")}
+        />
+      )}
+
+      {step === "gif" && sessionId && (!zoned || zoneId) && (
+        <GifStep
           room={room}
           board={board}
           sessionId={sessionId}
@@ -276,7 +293,7 @@ function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void
   );
 }
 
-function ChooseStep({ canText, canImage, limitReached, submittedCount, zone, onChangeZone, onText, onImage }: { canText: boolean; canImage: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void }) {
+function ChooseStep({ canText, canImage, canGif, limitReached, submittedCount, zone, onChangeZone, onText, onImage, onGif }: { canText: boolean; canImage: boolean; canGif: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void }) {
   const { t } = useI18n();
   if (limitReached) {
     return <StateCard icon={<IconCheck size={40} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
@@ -289,6 +306,7 @@ function ChooseStep({ canText, canImage, limitReached, submittedCount, zone, onC
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {canText && <ChoiceCard icon={<IconText size={24} />} title={t("כתבו תשובה")} desc={t("שתפו רעיון או תשובה קצרה בטקסט")} onClick={onText} />}
         {canImage && <ChoiceCard icon={<IconImage size={24} />} title={t("הוסיפו תמונה")} desc={t("צלמו או העלו תמונה מהגלריה")} onClick={onImage} />}
+        {canGif && <ChoiceCard icon={<IconSticker size={24} />} title={t("הוסיפו GIF או מדבקה")} desc={t("חפשו ושלחו GIF או מדבקה מספריית GIPHY")} onClick={onGif} />}
       </div>
     </div>
   );
@@ -404,6 +422,71 @@ function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }
           {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח תמונה") : t("קבלת התוכן מושהית")}
         </Button>
       </StickyAction>
+    </div>
+  );
+}
+
+function GifStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+  const { t } = useI18n();
+  const [selected, setSelected] = useState<GiphyPickerItem | null>(null);
+  const [caption, setCaption] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const canSubmit = room.status === "active" && !!selected && !submitting;
+
+  function submit() {
+    if (!selected) return;
+    // Same duplicate / rate-limit protection as text and image submissions.
+    const mine = db.listSubmissionsForParticipant(room.id, sessionId);
+    const last = mine[0];
+    if (last && Date.now() - new Date(last.created_at).getTime() < SUBMISSION_RATE_LIMIT_MS) {
+      return setError(t("רגע לפני — נסו שוב עוד כמה שניות"));
+    }
+    if (mine.some((s) => s.media_url === selected.media_url)) {
+      return setError(t("כבר שלחתם את ה-GIF הזה"));
+    }
+    setSubmitting(true);
+    setTimeout(() => {
+      db.createSubmission({
+        roomId: room.id,
+        type: "image",
+        mediaUrl: selected.media_url,
+        text: caption.trim() || null,
+        participantSessionId: sessionId,
+        displayName,
+        anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+        zoneId: zone?.id ?? null,
+        moderationMode: board.moderation.mode,
+      });
+      setSubmitting(false);
+      onDone();
+    }, 350);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <BackLink onClick={onBack} />
+      {zone && <ZoneBanner zone={zone} />}
+      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{t("הוסיפו GIF או מדבקה")}</div>
+
+      {!selected && <GiphyPicker onSelect={(item) => { setSelected(item); setError(null); }} />}
+
+      {selected && (
+        <>
+          <div style={{ borderRadius: "var(--radius-xl)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-sunken)", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 160, maxHeight: 300 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={selected.media_url} alt={selected.title || t("ה-GIF שנבחר")} style={{ maxWidth: "100%", maxHeight: 300, objectFit: "contain" }} />
+          </div>
+          <Button variant="outline" size="md" block onClick={() => setSelected(null)}>{t("בחרו GIF אחר")}</Button>
+          <Input label={t("כיתוב (אופציונלי)")} value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 120))} placeholder={t("הוסיפו כיתוב קצר")} />
+          {error && <div style={{ fontSize: "var(--text-2xs)", color: "var(--danger)", fontWeight: "var(--weight-semibold)" }}>{error}</div>}
+          <StickyAction>
+            <Button variant="primary" size="lg" block disabled={!canSubmit} onClick={submit}>
+              {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח GIF") : t("קבלת התוכן מושהית")}
+            </Button>
+          </StickyAction>
+        </>
+      )}
     </div>
   );
 }
