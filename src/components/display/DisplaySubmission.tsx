@@ -4,6 +4,7 @@ import type { Board, Submission } from "@/lib/types";
 import { useI18n } from "@/lib/i18n/react";
 import { initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
+import { isGiphyMediaUrl } from "@/lib/giphy";
 import { IconEyeOff, IconMonitor, IconPin, IconTrash } from "@/components/ui/icons";
 
 export interface FacilitatorCardActions {
@@ -96,7 +97,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         >
           {!isSeedImage(submission.media_url) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: isGiphyMediaUrl(submission.media_url) ? "contain" : "cover" }} />
           )}
         </div>
       )}
