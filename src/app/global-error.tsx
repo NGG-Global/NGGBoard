@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect } from "react";
+import { useI18n } from "@/lib/i18n/react";
 
 /**
  * Last-resort boundary for errors thrown in the root layout itself, where the
  * normal error.tsx cannot render. It must provide its own <html>/<body>.
  */
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const { lang, t } = useI18n();
   useEffect(() => {
     console.error("NGG Boards — root error:", error);
   }, [error]);
 
   return (
-    <html lang="he" dir="rtl">
+    <html lang={lang} dir={lang === "he" ? "rtl" : "ltr"}>
       <body style={{ margin: 0 }}>
         <div
           style={{
@@ -32,9 +34,9 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           <div style={{ fontSize: 44, lineHeight: 1 }} aria-hidden="true">
             ⚠️
           </div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>משהו השתבש</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>{t("משהו השתבש")}</h1>
           <p style={{ maxWidth: 420, color: "#55555f", fontSize: 15, margin: 0 }}>
-            אירעה תקלה בלתי צפויה. נסו לרענן את הדף.
+            {t("אירעה תקלה בלתי צפויה. נסו לרענן את הדף.")}
           </p>
           <button
             onClick={() => reset()}
@@ -49,7 +51,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
               cursor: "pointer",
             }}
           >
-            נסו שוב
+            {t("נסו שוב")}
           </button>
         </div>
       </body>

@@ -8,6 +8,7 @@ import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
 import { BoardStatusBadge, Badge, ConfirmDialog, LiveDot, RovingMenu, useToast } from "@/components/ui";
+import { useI18n } from "@/lib/i18n/react";
 import { IconFolder } from "@/components/ui/icons";
 import { BoardThumbnail } from "./BoardThumbnail";
 import { MoveToFolderDialog } from "./MoveToFolderDialog";
@@ -25,6 +26,7 @@ export function BoardCard({
   onToggleSelect?: () => void;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -67,7 +69,7 @@ export function BoardCard({
         <button
           role="checkbox"
           aria-checked={!!selected}
-          aria-label={selected ? "ביטול בחירה" : "בחירת הלוח"}
+          aria-label={selected ? t("ביטול בחירה") : t("בחירת הלוח")}
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSelect(); }}
           draggable={false}
           style={{
@@ -93,7 +95,7 @@ export function BoardCard({
           {selected ? "✓" : ""}
         </button>
       )}
-      <Link href={`/app/boards/${board.id}`} aria-label={`פתח את ${board.internal_name}`} draggable={false}>
+      <Link href={`/app/boards/${board.id}`} aria-label={t("פתח את {name}", { name: board.internal_name })} draggable={false}>
         <BoardThumbnail board={board} />
       </Link>
       <div style={{ padding: "11px 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -114,7 +116,7 @@ export function BoardCard({
           </Link>
           <div style={{ position: "relative", flex: "none" }}>
             <button
-              aria-label="פעולות נוספות"
+              aria-label={t("פעולות נוספות")}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
@@ -138,7 +140,7 @@ export function BoardCard({
                 <div onClick={closeMenu} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
                 <RovingMenu
                   onClose={closeMenu}
-                  ariaLabel={`פעולות עבור ${board.internal_name}`}
+                  ariaLabel={t("פעולות עבור {name}", { name: board.internal_name })}
                   style={{
                     position: "absolute",
                     insetInlineEnd: 0,
@@ -156,17 +158,17 @@ export function BoardCard({
                 >
                   {activeRoom && (
                     <MenuItem accent onClick={() => { closeMenu(); router.push(`/app/rooms/${activeRoom.id}/control`); }}>
-                      פתח חדר בקרה
+                      {t("פתח חדר בקרה")}
                     </MenuItem>
                   )}
                   {activeRoom && (
                     <MenuItem danger onClick={() => { closeMenu(); setConfirmEnd(true); }}>
-                      כבה חדר פעיל
+                      {t("כבה חדר פעיל")}
                     </MenuItem>
                   )}
-                  <MenuItem onClick={() => router.push(`/app/boards/${board.id}/edit`)}>עריכה</MenuItem>
+                  <MenuItem onClick={() => router.push(`/app/boards/${board.id}/edit`)}>{t("עריכה")}</MenuItem>
                   <MenuItem onClick={() => { closeMenu(); setMoveFolder(true); }}>
-                    {board.folder ? `תיקייה: ${board.folder}` : "העבר לתיקייה"}
+                    {board.folder ? t("תיקייה: {name}", { name: board.folder }) : t("העבר לתיקייה")}
                   </MenuItem>
                   {board.status === "ready" && !activeRoom && (
                     <MenuItem
@@ -176,18 +178,18 @@ export function BoardCard({
                         onActivate(board);
                       }}
                     >
-                      הפעל חדר
+                      {t("הפעל חדר")}
                     </MenuItem>
                   )}
                   <MenuItem
                     onClick={() => {
                       const dup = db.duplicateBoard(board.id);
                       closeMenu();
-                      toast.show("הלוח שוכפל כטיוטה חדשה");
+                      toast.show(t("הלוח שוכפל כטיוטה חדשה"));
                       router.push(`/app/boards/${dup.id}/edit`);
                     }}
                   >
-                    שכפול
+                    {t("שכפול")}
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
@@ -196,16 +198,16 @@ export function BoardCard({
                       db.setBoardStatus(board.id, toArchive ? "archived" : "ready");
                       closeMenu();
                       toast.show(
-                        toArchive ? "הלוח הועבר לארכיון" : "הלוח שוחזר מהארכיון",
+                        toArchive ? t("הלוח הועבר לארכיון") : t("הלוח שוחזר מהארכיון"),
                         () => db.setBoardStatus(board.id, prev),
                       );
                     }}
                   >
-                    {board.status === "archived" ? "שחזר מהארכיון" : "העבר לארכיון"}
+                    {board.status === "archived" ? t("שחזר מהארכיון") : t("העבר לארכיון")}
                   </MenuItem>
                   <div style={{ height: 1, background: "var(--border)", margin: "4px 6px" }} />
                   <MenuItem danger onClick={() => { closeMenu(); setConfirmDelete(true); }}>
-                    מחיקה לצמיתות
+                    {t("מחיקה לצמיתות")}
                   </MenuItem>
                 </RovingMenu>
               </>
@@ -217,14 +219,14 @@ export function BoardCard({
           {activeRoom ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--accent)", color: "#fff", padding: "2px 9px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
               <LiveDot light />
-              בשידור חי
+              {t("בשידור חי")}
             </span>
           ) : (
             <BoardStatusBadge status={board.status} />
           )}
           {shared && owner && (
             <Badge color="neutral" variant="outline">
-              שותף · {owner.full_name.split(" ")[0]}
+              {t("שותף · {name}", { name: owner.full_name.split(" ")[0]! })}
             </Badge>
           )}
           {board.folder && (
@@ -242,29 +244,29 @@ export function BoardCard({
 
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
           {activeRoom
-            ? `${activeRoom.participant_count} משתתפים · ${db.listSubmissions(activeRoom.id).length} פריטי תוכן`
+            ? t("{participants} משתתפים · {items} פריטי תוכן", { participants: activeRoom.participant_count, items: db.listSubmissions(activeRoom.id).length })
             : lastSession
-              ? `מפגש אחרון · ${lastSession.participants} משתתפים · ${lastSession.items} פריטים · ${formatAgo(lastSession.endedAt)}`
-              : `נערך ${formatAgo(board.updated_at)}`}
+              ? t("מפגש אחרון · {participants} משתתפים · {items} פריטים · {time}", { participants: lastSession.participants, items: lastSession.items, time: formatAgo(lastSession.endedAt) })
+              : t("נערך {time}", { time: formatAgo(board.updated_at) })}
         </div>
       </div>
 
       <ConfirmDialog
         open={confirmEnd}
-        title="לכבות את החדר הפעיל?"
-        description="המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים."
-        confirmLabel="כבה מפגש"
+        title={t("לכבות את החדר הפעיל?")}
+        description={t("המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים.")}
+        confirmLabel={t("כבה מפגש")}
         danger
-        onConfirm={() => { if (activeRoom) db.endRoom(activeRoom.id); setConfirmEnd(false); toast.show("המפגש הפעיל נסגר"); }}
+        onConfirm={() => { if (activeRoom) db.endRoom(activeRoom.id); setConfirmEnd(false); toast.show(t("המפגש הפעיל נסגר")); }}
         onCancel={() => setConfirmEnd(false)}
       />
       <ConfirmDialog
         open={confirmDelete}
-        title="למחוק את הלוח לצמיתות?"
-        description={`הלוח "${board.internal_name}" וכל היסטוריית המפגשים והתוכן שנאסף יימחקו לצמיתות. לא ניתן לשחזר פעולה זו. אם ברצונכם לשמור את הנתונים, השתמשו ב"העבר לארכיון" במקום.`}
-        confirmLabel="מחק לצמיתות"
+        title={t("למחוק את הלוח לצמיתות?")}
+        description={t('הלוח "{name}" וכל היסטוריית המפגשים והתוכן שנאסף יימחקו לצמיתות. לא ניתן לשחזר פעולה זו. אם ברצונכם לשמור את הנתונים, השתמשו ב"העבר לארכיון" במקום.', { name: board.internal_name })}
+        confirmLabel={t("מחק לצמיתות")}
         danger
-        onConfirm={() => { db.deleteBoard(board.id); setConfirmDelete(false); toast.show("הלוח נמחק לצמיתות"); }}
+        onConfirm={() => { db.deleteBoard(board.id); setConfirmDelete(false); toast.show(t("הלוח נמחק לצמיתות")); }}
         onCancel={() => setConfirmDelete(false)}
       />
       <MoveToFolderDialog

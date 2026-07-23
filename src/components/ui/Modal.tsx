@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { Button } from "./Button";
+import { useI18n } from "@/lib/i18n/react";
 
 export interface ModalProps {
   open: boolean;
@@ -38,7 +39,6 @@ export function Modal({ open, onClose, children, labelledBy, width = 400 }: Moda
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        dir="rtl"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
@@ -82,6 +82,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   return (
     <Modal open={open} onClose={onCancel} labelledBy="confirm-title" width={400}>
       <h2 id="confirm-title" style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>
@@ -94,10 +95,10 @@ export function ConfirmDialog({
       )}
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
         <Button variant="ghost" onClick={onCancel}>
-          {cancelLabel}
+          {t(cancelLabel)}
         </Button>
         <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>
-          {confirmLabel}
+          {t(confirmLabel)}
         </Button>
       </div>
     </Modal>

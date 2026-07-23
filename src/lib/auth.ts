@@ -1,5 +1,6 @@
 "use client";
 
+import { t } from "@/lib/i18n";
 import type { Profile } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { supabaseDb } from "@/lib/data/supabase-db";
@@ -67,7 +68,7 @@ export function getCurrentProfile(): Profile | null {
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   if (USE_SUPABASE) {
     const sb = getSupabase();
-    if (!sb) return { ok: false, error: "החיבור לשרת אינו זמין" };
+    if (!sb) return { ok: false, error: t("החיבור לשרת אינו זמין") };
     const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
     if (error) return { ok: false, error: translateAuthError(error.message) };
     cachedUserId = data.user?.id ?? null;
@@ -80,7 +81,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   const match =
     db.listProfiles().find((p) => p.email.toLowerCase() === normalized) ??
     (normalized === "" ? db.getProfile(CURRENT_USER_ID) : null);
-  if (!match) return { ok: false, error: "כתובת המייל אינה מזוהה בארגון. פנו למנהל המערכת." };
+  if (!match) return { ok: false, error: t("כתובת המייל אינה מזוהה בארגון. פנו למנהל המערכת.") };
   if (typeof window !== "undefined") window.localStorage.setItem(SESSION_KEY, match.id);
   return { ok: true, profile: match };
 }
@@ -88,7 +89,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 export async function signUp(email: string, password: string, fullName: string): Promise<SignInResult> {
   if (!USE_SUPABASE) return signIn(email, password);
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "החיבור לשרת אינו זמין" };
+  if (!sb) return { ok: false, error: t("החיבור לשרת אינו זמין") };
   const { data, error } = await sb.auth.signUp({
     email: email.trim(),
     password,
@@ -97,7 +98,7 @@ export async function signUp(email: string, password: string, fullName: string):
   if (error) return { ok: false, error: translateAuthError(error.message) };
   // If email confirmation is required, there is no session yet.
   if (!data.session) {
-    return { ok: false, error: "נשלח אליכם מייל אימות. אשרו אותו ואז התחברו." };
+    return { ok: false, error: t("נשלח אליכם מייל אימות. אשרו אותו ואז התחברו.") };
   }
   cachedUserId = data.user?.id ?? null;
   supabaseDb.setCurrentProfile(cachedUserId);
@@ -123,9 +124,9 @@ export { USE_SUPABASE };
 
 function translateAuthError(message: string): string {
   const m = message.toLowerCase();
-  if (m.includes("invalid login")) return "מייל או סיסמה שגויים";
-  if (m.includes("email not confirmed")) return "יש לאשר את מייל האימות לפני ההתחברות";
-  if (m.includes("already registered")) return "כתובת המייל כבר רשומה — התחברו במקום זאת";
-  if (m.includes("password")) return "הסיסמה חייבת לכלול לפחות 6 תווים";
-  return "ההתחברות נכשלה. נסו שוב.";
+  if (m.includes("invalid login")) return t("מייל או סיסמה שגויים");
+  if (m.includes("email not confirmed")) return t("יש לאשר את מייל האימות לפני ההתחברות");
+  if (m.includes("already registered")) return t("כתובת המייל כבר רשומה — התחברו במקום זאת");
+  if (m.includes("password")) return t("הסיסמה חייבת לכלול לפחות 6 תווים");
+  return t("ההתחברות נכשלה. נסו שוב.");
 }

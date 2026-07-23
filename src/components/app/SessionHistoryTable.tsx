@@ -5,10 +5,12 @@ import type { SessionSummary } from "@/lib/types";
 import { RoomStatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/ui";
 import { formatAgo } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/react";
 
 export function SessionHistoryTable({ sessions }: { sessions: SessionSummary[] }) {
+  const { t } = useI18n();
   if (sessions.length === 0) {
-    return <EmptyState compact title="הלוח עדיין לא הופעל" description="כשתפעילו חדר חי, כל מפגש יופיע כאן עם מספר המשתתפים והתוכן שנאסף." />;
+    return <EmptyState compact title={t("הלוח עדיין לא הופעל")} description={t("כשתפעילו חדר חי, כל מפגש יופיע כאן עם מספר המשתתפים והתוכן שנאסף.")} />;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -28,22 +30,22 @@ export function SessionHistoryTable({ sessions }: { sessions: SessionSummary[] }
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
             <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>
-              {room.session_label || "מפגש ללא שם"}
+              {room.session_label || t("מפגש ללא שם")}
             </span>
             <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
               {formatAgo(room.started_at ?? room.created_at)}
-              {duration_minutes != null && ` · ${duration_minutes} דק׳`} · {room.participant_count} משתתפים · {submission_count} פריטים
+              {duration_minutes != null && ` · ${t("{minutes} דק׳", { minutes: duration_minutes })}`} · {t("{count} משתתפים", { count: room.participant_count })} · {t("{count} פריטים", { count: submission_count })}
             </span>
           </div>
           <RoomStatusBadge status={room.status} />
           {(room.status === "ended" || room.status === "archived") && (
             <Link href={`/results/${room.id}`} style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>
-              פתח תוצאות
+              {t("פתח תוצאות")}
             </Link>
           )}
           {["active", "paused", "read_only", "suspended"].includes(room.status) && (
             <Link href={`/app/rooms/${room.id}/control`} style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>
-              חזרה לחדר
+              {t("חזרה לחדר")}
             </Link>
           )}
         </div>

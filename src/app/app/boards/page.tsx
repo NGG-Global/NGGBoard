@@ -14,6 +14,7 @@ import { MoveToFolderDialog } from "@/components/app/MoveToFolderDialog";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { Button, ConfirmDialog, EmptyState, Input, LiveDot, Modal, RovingMenu, useToast } from "@/components/ui";
 import { IconFolder, IconGrid, IconMonitor, IconSearch, IconTemplate } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n/react";
 
 const PAGE_TITLES: Record<DashView, string> = {
   all: "הלוחות שלי",
@@ -27,6 +28,7 @@ const PAGE_TITLES: Record<DashView, string> = {
 function DashboardInner() {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useI18n();
   const params = useSearchParams();
   const view = (params.get("view") as DashView) || "all";
   const folder = params.get("folder");
@@ -90,7 +92,7 @@ function DashboardInner() {
                 {folder}
               </>
             ) : (
-              PAGE_TITLES[view]
+              t(PAGE_TITLES[view])
             )}
           </h1>
           {view === "all" && folder && <FolderMenu folder={folder} onDone={() => router.push("/app/boards?view=all")} />}
@@ -112,13 +114,13 @@ function DashboardInner() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="חיפוש לוחות"
-              aria-label="חיפוש לוחות"
+              placeholder={t("חיפוש לוחות")}
+              aria-label={t("חיפוש לוחות")}
               style={{ border: "none", outline: "none", background: "transparent", fontSize: "var(--text-sm)", width: "100%", color: "var(--text)" }}
             />
           </label>
           <Button variant="primary" leadingIcon={<span style={{ fontSize: 16, fontWeight: 800 }}>+</span>} onClick={() => router.push("/app/boards/new")}>
-            לוח חדש
+            {t("לוח חדש")}
           </Button>
         </div>
 
@@ -126,11 +128,11 @@ function DashboardInner() {
         {view === "templates" && (
           <EmptyState
             icon={<IconTemplate size={36} strokeWidth={1.5} />}
-            title="גלריית התבניות בדרך"
-            description="תבניות מוכנות — סיכום סדנה, רטרוספקטיבה, קיר רעיונות, שאלות ותשובות ועוד — יגיעו בגרסה הבאה. עד אז אפשר ליצור לוח חדש ולשכפל לוחות קיימים."
+            title={t("גלריית התבניות בדרך")}
+            description={t("תבניות מוכנות — סיכום סדנה, רטרוספקטיבה, קיר רעיונות, שאלות ותשובות ועוד — יגיעו בגרסה הבאה. עד אז אפשר ליצור לוח חדש ולשכפל לוחות קיימים.")}
             action={
               <Button variant="secondary" onClick={() => router.push("/app/boards/new")}>
-                צרו לוח חדש
+                {t("צרו לוח חדש")}
               </Button>
             }
           />
@@ -139,7 +141,7 @@ function DashboardInner() {
         {/* Active-now banner */}
         {showLive && (
           <section style={{ marginBottom: 26 }}>
-            <SectionLabel>פעיל עכשיו</SectionLabel>
+            <SectionLabel>{t("פעיל עכשיו")}</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {activeRooms.map((room) => {
                 const board = db.getBoard(room.board_id);
@@ -182,22 +184,22 @@ function DashboardInner() {
                           }}
                         >
                           <LiveDot light />
-                          בשידור חי
+                          {t("בשידור חי")}
                         </span>
                       </div>
                       <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-                        {room.participant_count} משתתפים · {subs} פריטי תוכן
-                        {room.session_label ? ` · ${room.session_label}` : ""} · התחיל {formatAgo(room.started_at ?? room.created_at)}
+                        {t("{participants} משתתפים · {items} פריטי תוכן", { participants: room.participant_count, items: subs })}
+                        {room.session_label ? ` · ${room.session_label}` : ""} · {t("התחיל {ago}", { ago: formatAgo(room.started_at ?? room.created_at) })}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
                       <Button variant="primary" leadingIcon={<IconMonitor size={14} />} onClick={() => router.push(`/app/rooms/${room.id}/control`)}>
-                        פתח חדר בקרה
+                        {t("פתח חדר בקרה")}
                       </Button>
                       <Link href={`/display/${room.public_id}`} target="_blank">
-                        <Button variant="outline">פתח תצוגה</Button>
+                        <Button variant="outline">{t("פתח תצוגה")}</Button>
                       </Link>
-                      <Button variant="ghost" onClick={() => setEndRoomId(room.id)}>כבה</Button>
+                      <Button variant="ghost" onClick={() => setEndRoomId(room.id)}>{t("כבה")}</Button>
                     </div>
                   </div>
                 );
@@ -209,15 +211,15 @@ function DashboardInner() {
         {view === "active" && activeRooms.length === 0 && (
           <EmptyState
             icon={<LiveDot />}
-            title="אין חדרים פעילים כרגע"
-            description="כשתפעילו לוח, החדר החי יופיע כאן עם מספר המשתתפים והתוכן שנאסף."
+            title={t("אין חדרים פעילים כרגע")}
+            description={t("כשתפעילו לוח, החדר החי יופיע כאן עם מספר המשתתפים והתוכן שנאסף.")}
           />
         )}
 
         {/* Recently used */}
         {showRecent && (
           <section style={{ marginBottom: 26 }}>
-            <SectionLabel>בשימוש לאחרונה</SectionLabel>
+            <SectionLabel>{t("בשימוש לאחרונה")}</SectionLabel>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
               {recent.map((board) => (
                 <Link
@@ -251,7 +253,7 @@ function DashboardInner() {
                     >
                       {board.internal_name}
                     </span>
-                    <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>נערך {formatAgo(board.updated_at)}</span>
+                    <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{t("נערך {ago}", { ago: formatAgo(board.updated_at) })}</span>
                   </div>
                 </Link>
               ))}
@@ -270,7 +272,7 @@ function DashboardInner() {
                       <IconFolder size={13} /> {g.name} · {g.boards.length}
                     </Link>
                   ) : (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>ללא תיקייה · {g.boards.length}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{t("ללא תיקייה")} · {g.boards.length}</span>
                   )}
                 </SectionLabel>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 14 }}>
@@ -286,33 +288,33 @@ function DashboardInner() {
         {showGrid && !(grouped && groups.length > 0) && (
           <section>
             <SectionLabel>
-              {view === "all" ? (folder ? `לוחות בתיקייה` : q ? "תוצאות חיפוש" : "כל הלוחות") : PAGE_TITLES[view]}
+              {view === "all" ? (folder ? t("לוחות בתיקייה") : q ? t("תוצאות חיפוש") : t("כל הלוחות")) : t(PAGE_TITLES[view])}
             </SectionLabel>
             {pool.length === 0 ? (
               <EmptyState
                 icon={<IconGrid size={36} strokeWidth={1.5} />}
                 title={
                   q
-                    ? "לא נמצאו לוחות שמתאימים לחיפוש"
+                    ? t("לא נמצאו לוחות שמתאימים לחיפוש")
                     : folder
-                      ? "אין לוחות בתיקייה הזו"
+                      ? t("אין לוחות בתיקייה הזו")
                       : view === "archive"
-                        ? "הארכיון ריק"
+                        ? t("הארכיון ריק")
                         : view === "shared"
-                          ? "עדיין לא שותפו איתכם לוחות"
-                          : "אין כאן לוחות עדיין"
+                          ? t("עדיין לא שותפו איתכם לוחות")
+                          : t("אין כאן לוחות עדיין")
                 }
                 description={
                   folder
-                    ? 'העבירו לוחות לתיקייה דרך תפריט "⋯" שעל הלוח, או צרו לוח חדש.'
+                    ? t('העבירו לוחות לתיקייה דרך תפריט "⋯" שעל הלוח, או צרו לוח חדש.')
                     : view === "all" && !q
-                      ? "צרו את הלוח הראשון שלכם — הגדירו כותרת, עיצוב וכללי השתתפות, ואז הפעילו חדר חי בלחיצה."
+                      ? t("צרו את הלוח הראשון שלכם — הגדירו כותרת, עיצוב וכללי השתתפות, ואז הפעילו חדר חי בלחיצה.")
                       : undefined
                 }
                 action={
                   (folder || (view === "all" && !q)) ? (
                     <Button variant="primary" onClick={() => router.push("/app/boards/new")}>
-                      צרו לוח חדש
+                      {t("צרו לוח חדש")}
                     </Button>
                   ) : undefined
                 }
@@ -331,7 +333,6 @@ function DashboardInner() {
       {/* Bulk action bar */}
       {selected.size > 0 && (
         <div
-          dir="rtl"
           style={{
             position: "fixed",
             insetInlineStart: 0,
@@ -357,22 +358,22 @@ function DashboardInner() {
               boxShadow: "var(--shadow-xl)",
             }}
           >
-            <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>{selected.size} נבחרו</span>
+            <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>{t("{count} נבחרו", { count: selected.size })}</span>
             <span style={{ width: 1, height: 20, background: "rgba(255,255,255,.2)" }} />
-            <button onClick={() => setBulkMove(true)} className="ngg-hover" style={bulkBtn()}>העברה לתיקייה</button>
+            <button onClick={() => setBulkMove(true)} className="ngg-hover" style={bulkBtn()}>{t("העברה לתיקייה")}</button>
             <button
               onClick={() => {
                 const ids = [...selected];
                 ids.forEach((id) => db.setBoardStatus(id, "archived"));
                 clearSelection();
-                toast.show(`${ids.length} לוחות הועברו לארכיון`, () => ids.forEach((id) => db.setBoardStatus(id, "ready")));
+                toast.show(t("{count} לוחות הועברו לארכיון", { count: ids.length }), () => ids.forEach((id) => db.setBoardStatus(id, "ready")));
               }}
               className="ngg-hover"
               style={bulkBtn()}
             >
-              העברה לארכיון
+              {t("העברה לארכיון")}
             </button>
-            <button onClick={clearSelection} aria-label="ניקוי הבחירה" className="ngg-hover" style={{ ...bulkBtn(), color: "var(--neutral-400,#a1a1aa)" }}>נקה</button>
+            <button onClick={clearSelection} aria-label={t("ניקוי הבחירה")} className="ngg-hover" style={{ ...bulkBtn(), color: "var(--neutral-400,#a1a1aa)" }}>{t("נקה")}</button>
           </div>
         </div>
       )}
@@ -382,11 +383,11 @@ function DashboardInner() {
       <RoomActivationDialog board={activateBoard} open={!!activateBoard} onClose={() => setActivateBoard(null)} />
       <ConfirmDialog
         open={!!endRoomId}
-        title="לכבות את החדר הפעיל?"
-        description="המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים."
-        confirmLabel="כבה מפגש"
+        title={t("לכבות את החדר הפעיל?")}
+        description={t("המפגש החי ייסגר והמשתתפים לא יוכלו לשלוח תוכן נוסף. התוכן שנאסף יישמר בהיסטוריית המפגשים.")}
+        confirmLabel={t("כבה מפגש")}
         danger
-        onConfirm={() => { if (endRoomId) db.endRoom(endRoomId); setEndRoomId(null); toast.show("המפגש הפעיל נסגר"); }}
+        onConfirm={() => { if (endRoomId) db.endRoom(endRoomId); setEndRoomId(null); toast.show(t("המפגש הפעיל נסגר")); }}
         onCancel={() => setEndRoomId(null)}
       />
     </AppShell>
@@ -397,6 +398,7 @@ function DashboardInner() {
 function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) {
   const router = useRouter();
   const toast = useToast();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -408,7 +410,7 @@ function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) 
       db.renameFolder(folder, clean);
       setRenaming(false);
       router.push(`/app/boards?view=all&folder=${encodeURIComponent(clean)}`);
-      toast.show("שם התיקייה עודכן");
+      toast.show(t("שם התיקייה עודכן"));
     } else {
       setRenaming(false);
     }
@@ -417,7 +419,7 @@ function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) 
   return (
     <div style={{ position: "relative" }}>
       <button
-        aria-label="פעולות תיקייה"
+        aria-label={t("פעולות תיקייה")}
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
         className="ngg-hover"
@@ -428,31 +430,31 @@ function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) 
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
-          <RovingMenu onClose={() => setOpen(false)} ariaLabel={`פעולות עבור התיקייה ${folder}`} style={{ position: "absolute", insetInlineStart: 0, top: 34, zIndex: 30, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", padding: 5, minWidth: 150, display: "flex", flexDirection: "column" }}>
-            <button role="menuitem" onClick={() => { setOpen(false); setName(folder); setRenaming(true); }} className="ngg-hover" style={menuBtn(false)}>שינוי שם</button>
-            <button role="menuitem" onClick={() => { setOpen(false); setConfirmDelete(true); }} className="ngg-hover" style={menuBtn(true)}>מחיקת תיקייה</button>
+          <RovingMenu onClose={() => setOpen(false)} ariaLabel={t("פעולות עבור התיקייה {name}", { name: folder })} style={{ position: "absolute", insetInlineStart: 0, top: 34, zIndex: 30, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", padding: 5, minWidth: 150, display: "flex", flexDirection: "column" }}>
+            <button role="menuitem" onClick={() => { setOpen(false); setName(folder); setRenaming(true); }} className="ngg-hover" style={menuBtn(false)}>{t("שינוי שם")}</button>
+            <button role="menuitem" onClick={() => { setOpen(false); setConfirmDelete(true); }} className="ngg-hover" style={menuBtn(true)}>{t("מחיקת תיקייה")}</button>
           </RovingMenu>
         </>
       )}
 
       <Modal open={renaming} onClose={() => setRenaming(false)} width={360}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <h2 style={{ margin: 0, fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>שינוי שם התיקייה</h2>
-          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="שם התיקייה" autoFocus onKeyDown={(e) => e.key === "Enter" && doRename()} />
+          <h2 style={{ margin: 0, fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("שינוי שם התיקייה")}</h2>
+          <Input value={name} onChange={(e) => setName(e.target.value)} aria-label={t("שם התיקייה")} autoFocus onKeyDown={(e) => e.key === "Enter" && doRename()} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Button variant="ghost" onClick={() => setRenaming(false)}>ביטול</Button>
-            <Button variant="primary" disabled={!name.trim()} onClick={doRename}>שמירה</Button>
+            <Button variant="ghost" onClick={() => setRenaming(false)}>{t("ביטול")}</Button>
+            <Button variant="primary" disabled={!name.trim()} onClick={doRename}>{t("שמירה")}</Button>
           </div>
         </div>
       </Modal>
 
       <ConfirmDialog
         open={confirmDelete}
-        title={`למחוק את התיקייה "${folder}"?`}
-        description="התיקייה תימחק. הלוחות שבתוכה יישארו — הם פשוט לא ישויכו לתיקייה. אפשר לשייך אותם מחדש בכל עת."
-        confirmLabel="מחק תיקייה"
+        title={t('למחוק את התיקייה "{name}"?', { name: folder })}
+        description={t("התיקייה תימחק. הלוחות שבתוכה יישארו — הם פשוט לא ישויכו לתיקייה. אפשר לשייך אותם מחדש בכל עת.")}
+        confirmLabel={t("מחק תיקייה")}
         danger
-        onConfirm={() => { db.deleteFolder(folder); setConfirmDelete(false); onDone(); toast.show("התיקייה נמחקה"); }}
+        onConfirm={() => { db.deleteFolder(folder); setConfirmDelete(false); onDone(); toast.show(t("התיקייה נמחקה")); }}
         onCancel={() => setConfirmDelete(false)}
       />
     </div>

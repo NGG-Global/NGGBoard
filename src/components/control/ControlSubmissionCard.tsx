@@ -1,6 +1,7 @@
 "use client";
 
 import type { Board, Submission } from "@/lib/types";
+import { useI18n } from "@/lib/i18n/react";
 import { formatAgo, initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
 import { avatarColors } from "@/components/display/DisplaySubmission";
@@ -36,8 +37,9 @@ export function ControlSubmissionCard({
   isNew?: boolean;
   actions: CardActions;
 }) {
+  const { t } = useI18n();
   const anonymous = submission.anonymous || !submission.display_name;
-  const name = anonymous ? "אנונימי" : submission.display_name!;
+  const name = anonymous ? t("אנונימי") : submission.display_name!;
   const [avBg, avFg] = anonymous ? ["var(--neutral-100)", "var(--neutral-600)"] : avatarColors(submission.id);
 
   return (
@@ -57,7 +59,7 @@ export function ControlSubmissionCard({
       {focused && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
           <IconMonitor size={13} />
-          מוצג כעת על המסך
+          {t("מוצג כעת על המסך")}
         </div>
       )}
 
@@ -71,7 +73,7 @@ export function ControlSubmissionCard({
         </div>
         <div style={{ flex: 1 }} />
         {submission.pinned && (
-          <span style={{ background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>מוצמד</span>
+          <span style={{ background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>{t("מוצמד")}</span>
         )}
       </div>
 
@@ -79,7 +81,7 @@ export function ControlSubmissionCard({
         <div style={{ height: 118, borderRadius: "var(--radius-lg)", overflow: "hidden", background: isSeedImage(submission.media_url) ? seedGradientFor(submission.media_url) : undefined, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {!isSeedImage(submission.media_url) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={submission.media_url} alt={submission.text_content ?? "תמונה ששלח משתתף"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           )}
         </div>
       )}
@@ -90,28 +92,28 @@ export function ControlSubmissionCard({
 
       <div style={{ display: "flex", alignItems: "center", gap: 2, borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: "auto" }}>
         {actions.onApprove && (
-          <ActionButton accent onClick={actions.onApprove} icon={<IconCheck size={13} />}>אשר</ActionButton>
+          <ActionButton accent onClick={actions.onApprove} icon={<IconCheck size={13} />}>{t("אשר")}</ActionButton>
         )}
         {actions.onReject && (
-          <ActionButton onClick={actions.onReject} icon={<IconX size={13} />}>דחה</ActionButton>
+          <ActionButton onClick={actions.onReject} icon={<IconX size={13} />}>{t("דחה")}</ActionButton>
         )}
         {actions.onFocus && (
-          <ActionButton accent onClick={actions.onFocus} icon={<IconMonitor size={13} />}>{focused ? "הסר מהמסך" : "הצג"}</ActionButton>
+          <ActionButton accent onClick={actions.onFocus} icon={<IconMonitor size={13} />}>{focused ? t("הסר מהמסך") : t("הצג")}</ActionButton>
         )}
         {actions.onPin && (
-          <ActionButton onClick={actions.onPin} icon={<IconPin size={13} />}>{submission.pinned ? "בטל הצמדה" : "הצמד"}</ActionButton>
+          <ActionButton onClick={actions.onPin} icon={<IconPin size={13} />}>{submission.pinned ? t("בטל הצמדה") : t("הצמד")}</ActionButton>
         )}
         {actions.onHide && (
-          <ActionButton onClick={actions.onHide} icon={<IconEye size={13} />}>הסתר</ActionButton>
+          <ActionButton onClick={actions.onHide} icon={<IconEye size={13} />}>{t("הסתר")}</ActionButton>
         )}
         {actions.onRestore && (
-          <ActionButton accent onClick={actions.onRestore} icon={<IconEye size={13} />}>השב לתצוגה</ActionButton>
+          <ActionButton accent onClick={actions.onRestore} icon={<IconEye size={13} />}>{t("השב לתצוגה")}</ActionButton>
         )}
         <div style={{ flex: 1 }} />
         {actions.onDelete && (
           <button
-            aria-label="מחיקה"
-            title="מחיקה"
+            aria-label={t("מחיקה")}
+            title={t("מחיקה")}
             onClick={actions.onDelete}
             className="ngg-danger-hover"
             style={{ display: "flex", alignItems: "center", border: "none", background: "transparent", color: "var(--text-subtle)", padding: 6, borderRadius: "var(--radius-md)", cursor: "pointer" }}

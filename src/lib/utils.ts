@@ -1,4 +1,5 @@
 import { ALLOWED_IMAGE_TYPES } from "./constants";
+import { t } from "@/lib/i18n";
 
 /** Cryptographically-strong random id (used for non-guessable public room ids). */
 export function randomId(bytes = 12): string {
@@ -35,18 +36,18 @@ export function formatRoomCode(code: string): string {
 export function formatAgo(iso: string | number | Date, now: number = Date.now()): string {
   const ts = typeof iso === "number" ? iso : new Date(iso).getTime();
   const seconds = Math.max(2, Math.round((now - ts) / 1000));
-  if (seconds < 60) return `לפני ${seconds} שנ׳`;
+  if (seconds < 60) return t("לפני {count} שנ׳", { count: seconds });
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `לפני ${minutes} דק׳`;
+  if (minutes < 60) return t("לפני {count} דק׳", { count: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `לפני ${hours} שע׳`;
+  if (hours < 24) return t("לפני {count} שע׳", { count: hours });
   const days = Math.round(hours / 24);
-  if (days < 7) return `לפני ${days} ימים`;
+  if (days < 7) return t("לפני {count} ימים", { count: days });
   const weeks = Math.round(days / 7);
-  if (weeks < 5) return `לפני ${weeks} שבועות`;
+  if (weeks < 5) return t("לפני {count} שבועות", { count: weeks });
   const months = Math.round(days / 30);
-  if (months < 12) return `לפני ${months} חודשים`;
-  return `לפני ${Math.round(days / 365)} שנים`;
+  if (months < 12) return t("לפני {count} חודשים", { count: months });
+  return t("לפני {count} שנים", { count: Math.round(days / 365) });
 }
 
 export function minutesBetween(startIso: string | null, endIso: string | null): number | null {

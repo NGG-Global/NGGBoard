@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useI18n } from "@/lib/i18n/react";
 
 /**
  * Route-level error boundary. Replaces React's blank white-screen crash
@@ -9,6 +10,7 @@ import { useEffect } from "react";
  * imports heavy UI could fail to render for the very error it is catching.
  */
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const { t } = useI18n();
   useEffect(() => {
     // Surface the real cause in the console for diagnostics.
     console.error("NGG Boards — unhandled error:", error);
@@ -16,7 +18,6 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
 
   return (
     <div
-      dir="rtl"
       style={{
         minHeight: "100dvh",
         display: "flex",
@@ -35,10 +36,10 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         ⚠️
       </div>
       <h1 style={{ fontSize: "clamp(20px, 3vw, 28px)", fontWeight: 800, margin: 0 }}>
-        משהו השתבש
+        {t("משהו השתבש")}
       </h1>
       <p style={{ maxWidth: 420, color: "var(--text-muted, #55555f)", fontSize: 15, margin: 0 }}>
-        אירעה תקלה בטעינת המסך. אפשר לנסות שוב — ואם התקלה חוזרת, רעננו את הדף או חזרו למסך הראשי.
+        {t("אירעה תקלה בטעינת המסך. אפשר לנסות שוב — ואם התקלה חוזרת, רעננו את הדף או חזרו למסך הראשי.")}
       </p>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 6 }}>
         <button
@@ -55,7 +56,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
             fontFamily: "inherit",
           }}
         >
-          נסו שוב
+          {t("נסו שוב")}
         </button>
         <a
           href="/app/boards"
@@ -70,7 +71,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
             textDecoration: "none",
           }}
         >
-          חזרה למסך הראשי
+          {t("חזרה למסך הראשי")}
         </a>
       </div>
     </div>

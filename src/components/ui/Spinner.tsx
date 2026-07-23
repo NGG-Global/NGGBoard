@@ -1,12 +1,14 @@
 "use client";
 
 import React from "react";
+import { useI18n } from "@/lib/i18n/react";
 
 export function Spinner({ size = 20, color = "var(--accent)" }: { size?: number; color?: string }) {
+  const { t } = useI18n();
   return (
     <span
       role="status"
-      aria-label="טוען"
+      aria-label={t("טוען")}
       style={{
         display: "inline-block",
         width: size,

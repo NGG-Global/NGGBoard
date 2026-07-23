@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { db } from "@/lib/data";
 import { Button, Spinner } from "@/components/ui";
+import { LanguageToggle, useI18n } from "@/lib/i18n/react";
 
 export default function JoinByCodePage() {
   const router = useRouter();
+  const { t } = useI18n();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -16,7 +18,7 @@ export default function JoinByCodePage() {
     e.preventDefault();
     const clean = code.replace(/\D/g, "");
     if (clean.length !== 6) {
-      setError("קוד החדר מורכב מ-6 ספרות");
+      setError(t("קוד החדר מורכב מ-6 ספרות"));
       return;
     }
     setError(null);
@@ -31,15 +33,18 @@ export default function JoinByCodePage() {
       await new Promise((r) => setTimeout(r, 450));
     }
     setChecking(false);
-    setError("לא נמצא חדר עם הקוד הזה. בדקו שוב עם המנחה.");
+    setError(t("לא נמצא חדר עם הקוד הזה. בדקו שוב עם המנחה."));
   }
 
   return (
-    <div dir="rtl" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", padding: 24 }}>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", padding: 24 }}>
+      <div style={{ position: "absolute", top: 16, insetInlineEnd: 16 }}>
+        <LanguageToggle />
+      </div>
       <Image src="/brand/ngg-logo.png" alt="NGG" width={92} height={30} style={{ height: 30, width: "auto" }} />
       <div style={{ textAlign: "center" }}>
-        <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)" }}>הצטרפות למפגש</h1>
-        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 6 }}>הזינו את קוד החדר בן 6 הספרות שמופיע על המסך</p>
+        <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)" }}>{t("הצטרפות למפגש")}</h1>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 6 }}>{t("הזינו את קוד החדר בן 6 הספרות שמופיע על המסך")}</p>
       </div>
       <form onSubmit={submit} style={{ width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 14 }}>
         <input
@@ -47,7 +52,7 @@ export default function JoinByCodePage() {
           onChange={(e) => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(null); }}
           inputMode="numeric"
           autoFocus
-          aria-label="קוד חדר"
+          aria-label={t("קוד חדר")}
           placeholder="000000"
           dir="ltr"
           className="ngg-focusable"
@@ -55,7 +60,7 @@ export default function JoinByCodePage() {
         />
         {error && <span style={{ color: "var(--danger)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", textAlign: "center" }}>{error}</span>}
         <Button type="submit" variant="primary" size="lg" block disabled={checking}>
-          {checking ? <Spinner size={18} color="#fff" /> : "הצטרפו"}
+          {checking ? <Spinner size={18} color="#fff" /> : t("הצטרפו")}
         </Button>
       </form>
     </div>

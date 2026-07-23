@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/globals.css";
 import { ToastProvider } from "@/components/ui";
+import { LanguageInit } from "@/lib/i18n/react";
 
 export const metadata: Metadata = {
   title: "NGG Boards — לוחות חיים",
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="he" dir="rtl">
       <body>
+        <LanguageInit />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

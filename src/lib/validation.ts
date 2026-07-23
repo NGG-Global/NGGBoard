@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { t } from "@/lib/i18n";
 
 /** Board editor validation. Public title is the one hard requirement. */
 export const boardFormSchema = z.object({
@@ -13,7 +14,7 @@ export type BoardFormValues = z.infer<typeof boardFormSchema>;
 /** Participant submission validation, applied on client and (conceptually) server. */
 export function validateSubmissionText(text: string, limit: number): string | null {
   const trimmed = text.trim();
-  if (!trimmed) return "יש לכתוב תשובה לפני השליחה";
-  if (trimmed.length > limit) return `התשובה ארוכה מדי — עד ${limit} תווים`;
+  if (!trimmed) return t("יש לכתוב תשובה לפני השליחה");
+  if (trimmed.length > limit) return t("התשובה ארוכה מדי — עד {limit} תווים", { limit });
   return null;
 }

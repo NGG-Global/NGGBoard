@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n/react";
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { DisplayCanvas } from "@/components/display/DisplayCanvas";
@@ -8,6 +9,7 @@ import { Spinner } from "@/components/ui";
 import { IconWarning } from "@/components/ui/icons";
 
 export default function DisplayPage({ params }: { params: Promise<{ publicRoomId: string }> }) {
+  const { t } = useI18n();
   const { publicRoomId } = use(params);
   const mounted = useMounted();
   const [joinUrl, setJoinUrl] = useState("");
@@ -44,8 +46,8 @@ export default function DisplayPage({ params }: { params: Promise<{ publicRoomId
     return (
       <div className="theme-dark" style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "var(--gradient-ink)", color: "#f4f4f6", fontFamily: "var(--font-sans)" }}>
         <IconWarning size={40} />
-        <div style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)" }}>החדר לא נמצא</div>
-        <div style={{ color: "var(--neutral-400)" }}>ייתכן שהקישור שגוי או שהמפגש נמחק.</div>
+        <div style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)" }}>{t("החדר לא נמצא")}</div>
+        <div style={{ color: "var(--neutral-400)" }}>{t("ייתכן שהקישור שגוי או שהמפגש נמחק.")}</div>
       </div>
     );
   }

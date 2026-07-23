@@ -19,6 +19,7 @@ import {
   IconX,
 } from "@/components/ui/icons";
 import { LiveDot, RovingMenu, useToast } from "@/components/ui";
+import { LanguageToggle, useI18n } from "@/lib/i18n/react";
 import { BOARD_DND_MIME, DashDndProvider, useDashDnd } from "./dnd";
 
 export type DashView = "all" | "shared" | "active" | "templates" | "archive" | "admin";
@@ -42,6 +43,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
   const mounted = useMounted();
   // Reactive: re-reads once the profile hydrates (Supabase) or on any change.
   const profile = useLiveQuery("board-list", () => (mounted ? getCurrentProfile() : null));
@@ -53,7 +55,6 @@ export function AppShell({
   return (
     <DashDndProvider>
     <div
-      dir="rtl"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -95,18 +96,18 @@ export function AppShell({
         {mobile && (
           <button
             onClick={() => setNavOpen(false)}
-            aria-label="סגירת התפריט"
+            aria-label={t("סגירת התפריט")}
             className="ngg-hover"
             style={{ position: "absolute", top: 14, insetInlineStart: 12, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", padding: 4, borderRadius: "var(--radius-sm)", display: "flex" }}
           >
             <IconX size={18} />
           </button>
         )}
-        <Link href="/app/boards?view=all" aria-label="NGG Boards — דף הבית" style={{ alignSelf: "flex-start", margin: "0 8px 22px" }}>
+        <Link href="/app/boards?view=all" aria-label={t("NGG Boards — דף הבית")} style={{ alignSelf: "flex-start", margin: "0 8px 22px" }}>
           <Image src="/brand/ngg-logo.png" alt="NGG" width={80} height={26} style={{ height: 26, width: "auto" }} priority />
         </Link>
 
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }} aria-label="ניווט ראשי">
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }} aria-label={t("ניווט ראשי")}>
           {NAV.map((item) => {
             const active = current === item.key;
             return (
@@ -127,7 +128,7 @@ export function AppShell({
                 }}
               >
                 <span style={{ width: 15, display: "flex", justifyContent: "center" }}>{item.icon}</span>
-                {item.label}
+                {t(item.label)}
                 {item.key === "active" && activeCount > 0 && (
                   <span
                     style={{
@@ -152,6 +153,10 @@ export function AppShell({
 
         <div style={{ flex: 1 }} />
 
+        <div style={{ padding: "0 8px 10px" }}>
+          <LanguageToggle />
+        </div>
+
         {profile?.role === "org_admin" && (
           <Link
             href="/app/admin"
@@ -169,7 +174,7 @@ export function AppShell({
             }}
           >
             <IconSettings size={14} />
-            הגדרות ארגון
+            {t("הגדרות ארגון")}
           </Link>
         )}
 
@@ -218,9 +223,9 @@ export function AppShell({
                   textOverflow: "ellipsis",
                 }}
               >
-                {profile?.full_name ?? "משתמש"}
+                {profile?.full_name ?? t("משתמש")}
               </span>
-              <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>נירם גיתן</span>
+              <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{t("נירם גיתן")}</span>
             </span>
           </button>
           {menuOpen && (
@@ -228,7 +233,7 @@ export function AppShell({
               <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
               <RovingMenu
                 onClose={() => setMenuOpen(false)}
-                ariaLabel="תפריט משתמש"
+                ariaLabel={t("תפריט משתמש")}
                 style={{
                   position: "absolute",
                   bottom: 52,
@@ -261,7 +266,7 @@ export function AppShell({
                     textAlign: "start",
                   }}
                 >
-                  התנתקות
+                  {t("התנתקות")}
                 </button>
               </RovingMenu>
             </>
@@ -274,7 +279,7 @@ export function AppShell({
           <div style={{ position: "sticky", top: 0, zIndex: 40, display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
             <button
               onClick={() => setNavOpen(true)}
-              aria-label="פתיחת התפריט"
+              aria-label={t("פתיחת התפריט")}
               className="ngg-hover"
               style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", padding: "7px 9px", borderRadius: "var(--radius-md)", display: "flex" }}
             >
@@ -284,7 +289,7 @@ export function AppShell({
             {activeCount > 0 && (
               <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 9px", borderRadius: "var(--radius-pill)" }}>
                 <LiveDot />
-                {activeCount} פעיל
+                {t("{count} פעיל", { count: activeCount })}
               </span>
             )}
           </div>
@@ -301,6 +306,7 @@ export function AppShell({
  * Lives in its own component so it can consume the drag context provided above.
  */
 function FolderNav({ current, activeFolder }: { current: DashView; activeFolder: string | null }) {
+  const { t } = useI18n();
   const toast = useToast();
   const dnd = useDashDnd();
   const folders = useLiveQuery("board-list", () => db.listFolders());
@@ -336,7 +342,7 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
     if (before && (before.folder ?? null) === folder) return; // no-op
     db.setBoardFolder(id, folder);
     toast.show(
-      folder ? `הלוח הועבר לתיקייה "${folder}"` : "הלוח הוסר מהתיקייה",
+      folder ? t('הלוח הועבר לתיקייה "{name}"', { name: folder }) : t("הלוח הוסר מהתיקייה"),
       before ? () => db.setBoardFolder(id, before.folder) : undefined,
     );
   }
@@ -347,12 +353,12 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
     <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 2 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px" }}>
         <span style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)", letterSpacing: ".04em", flex: 1 }}>
-          תיקיות
+          {t("תיקיות")}
         </span>
         <button
           onClick={() => setAdding((v) => !v)}
-          aria-label="תיקייה חדשה"
-          title="תיקייה חדשה"
+          aria-label={t("תיקייה חדשה")}
+          title={t("תיקייה חדשה")}
           className="ngg-hover"
           style={{ border: "none", background: "transparent", color: "var(--text-subtle)", cursor: "pointer", padding: 3, borderRadius: "var(--radius-sm)", display: "flex" }}
         >
@@ -367,7 +373,7 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
           onChange={(e) => setNewFolder(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") createFolder(); if (e.key === "Escape") { setAdding(false); setNewFolder(""); } }}
           onBlur={createFolder}
-          placeholder="שם התיקייה…"
+          placeholder={t("שם התיקייה…")}
           className="ngg-focusable"
           style={{ margin: "0 8px 6px", padding: "7px 9px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", fontSize: "var(--text-sm)", fontFamily: "var(--font-sans)", color: "var(--text)", background: "var(--surface)", outline: "none" }}
         />
@@ -375,7 +381,7 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
 
       {folders.length === 0 && !adding && !dragging && (
         <div style={{ padding: "2px 10px 4px", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", lineHeight: "var(--leading-snug)" }}>
-          צרו תיקייה כדי לארגן את הלוחות — או גררו לוח לכאן
+          {t("צרו תיקייה כדי לארגן את הלוחות — או גררו לוח לכאן")}
         </div>
       )}
 
@@ -447,7 +453,7 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
               fontWeight: "var(--weight-semibold)",
             }}
           >
-            הסרה מתיקייה
+            {t("הסרה מתיקייה")}
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { isAllowedImageType } from "@/lib/utils";
 import { IconCamera, IconImage, IconX } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui";
+import { useI18n } from "@/lib/i18n/react";
 
 /** Compress an image file to a JPEG data URL, max `maxDim` on the long edge. */
 async function compressImage(file: File, maxDim = 1400, quality = 0.72): Promise<string> {
@@ -40,6 +41,7 @@ export function ImageUploadField({
   onChange: (dataUrl: string | null) => void;
   maxSizeMb: number;
 }) {
+  const { t } = useI18n();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -51,11 +53,11 @@ export function ImageUploadField({
     e.target.value = ""; // allow re-selecting the same file
     if (!file) return;
     if (!isAllowedImageType(file.type)) {
-      setError("סוג הקובץ אינו נתמך. יש לבחור תמונה (JPG, PNG, WEBP).");
+      setError(t("סוג הקובץ אינו נתמך. יש לבחור תמונה (JPG, PNG, WEBP)."));
       return;
     }
     if (file.size > maxSizeMb * 1024 * 1024) {
-      setError(`הקובץ גדול מדי — עד ${maxSizeMb}MB.`);
+      setError(t("הקובץ גדול מדי — עד {max}MB.", { max: maxSizeMb }));
       return;
     }
     setBusy(true);
@@ -63,7 +65,7 @@ export function ImageUploadField({
       const compressed = await compressImage(file);
       onChange(compressed);
     } catch {
-      setError("העלאת התמונה נכשלה. נסו שוב.");
+      setError(t("העלאת התמונה נכשלה. נסו שוב."));
     } finally {
       setBusy(false);
     }
@@ -74,10 +76,10 @@ export function ImageUploadField({
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ position: "relative", borderRadius: "var(--radius-xl)", overflow: "hidden", border: "1px solid var(--border)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={value} alt="תצוגה מקדימה" style={{ width: "100%", maxHeight: 320, objectFit: "contain", background: "var(--bg-muted)" }} />
+          <img src={value} alt={t("תצוגה מקדימה")} style={{ width: "100%", maxHeight: 320, objectFit: "contain", background: "var(--bg-muted)" }} />
           <button
             onClick={() => onChange(null)}
-            aria-label="הסר תמונה"
+            aria-label={t("הסר תמונה")}
             style={{ position: "absolute", top: 8, insetInlineEnd: 8, width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(8,8,16,.6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
           >
             <IconX size={16} />
@@ -87,7 +89,7 @@ export function ImageUploadField({
           onClick={() => galleryRef.current?.click()}
           style={{ border: "1px solid var(--border-strong)", background: "var(--surface)", borderRadius: "var(--radius-lg)", padding: "10px", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer" }}
         >
-          החלף תמונה
+          {t("החלף תמונה")}
         </button>
         <input ref={galleryRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
       </div>
@@ -99,12 +101,12 @@ export function ImageUploadField({
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: "none" }} />
       <input ref={galleryRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
       <div style={{ display: "flex", gap: 10 }}>
-        <UploadButton onClick={() => cameraRef.current?.click()} icon={<IconCamera size={22} />} label="צלמו תמונה" disabled={busy} />
-        <UploadButton onClick={() => galleryRef.current?.click()} icon={<IconImage size={22} />} label="בחרו מהגלריה" disabled={busy} />
+        <UploadButton onClick={() => cameraRef.current?.click()} icon={<IconCamera size={22} />} label={t("צלמו תמונה")} disabled={busy} />
+        <UploadButton onClick={() => galleryRef.current?.click()} icon={<IconImage size={22} />} label={t("בחרו מהגלריה")} disabled={busy} />
       </div>
       {busy && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-          <Spinner size={16} /> מעבד תמונה…
+          <Spinner size={16} /> {t("מעבד תמונה…")}
         </div>
       )}
       {error && <div style={{ color: "var(--danger)", fontSize: "var(--text-xs)", fontWeight: "var(--weight-semibold)" }}>{error}</div>}

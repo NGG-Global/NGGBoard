@@ -4,6 +4,7 @@ import Image from "next/image";
 import type { BoardAppearance, BoardParticipationSettings, DisplayLayout } from "@/lib/types";
 import { themeVisual } from "@/lib/board-visuals";
 import { IconImage } from "@/components/ui/icons";
+import { useI18n } from "@/lib/i18n/react";
 
 interface PreviewProps {
   title: string;
@@ -15,12 +16,13 @@ interface PreviewProps {
 
 /** Live 16:9 preview of the shared display, updated as the editor changes. */
 export function EditorPreview({ title, subtitle, appearance, participation }: PreviewProps) {
+  const { t } = useI18n();
   const v = themeVisual(appearance);
   const textColor = v.dark ? "#ffffff" : "var(--neutral-950)";
   const subColor = v.dark ? "rgba(255,255,255,.78)" : "var(--neutral-700)";
   const names = participation.anonymous_allowed
-    ? ["אנונימי", "אנונימי", "אנונימי"]
-    : ["נועה ברק", "יואב לוי", "מיכל אדר"];
+    ? [t("אנונימי"), t("אנונימי"), t("אנונימי")]
+    : [t("נועה ברק"), t("יואב לוי"), t("מיכל אדר")];
 
   return (
     <div
@@ -50,7 +52,7 @@ export function EditorPreview({ title, subtitle, appearance, participation }: Pr
               color: "var(--neutral-700)",
             }}
           >
-            לוגו לקוח
+            {t("לוגו לקוח")}
           </div>
         )}
         <div style={{ flex: 1 }} />
@@ -74,24 +76,24 @@ export function EditorPreview({ title, subtitle, appearance, participation }: Pr
             <rect x="13" y="17" width="2" height="2" />
             <rect x="18" y="18" width="3" height="3" />
           </svg>
-          <div style={{ fontSize: 8, fontWeight: "var(--weight-bold)", color: "var(--neutral-700)" }}>הצטרפו</div>
+          <div style={{ fontSize: 8, fontWeight: "var(--weight-bold)", color: "var(--neutral-700)" }}>{t("הצטרפו")}</div>
         </div>
       </div>
 
       {/* Title block */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 6 }}>
         <div style={{ fontSize: "clamp(18px,2.6vw,34px)", fontWeight: "var(--weight-black)", color: textColor, lineHeight: "var(--leading-tight)" }}>
-          {title || "כותרת הלוח תופיע כאן"}
+          {title || t("כותרת הלוח תופיע כאן")}
         </div>
         <div style={{ fontSize: "clamp(11px,1.3vw,16px)", color: subColor }}>
-          {subtitle || "ההנחיה למשתתפים תופיע כאן"}
+          {subtitle || t("ההנחיה למשתתפים תופיע כאן")}
         </div>
       </div>
 
       {/* Sample cards */}
       <div style={{ display: "flex", gap: "2.5%", alignItems: "stretch" }}>
-        <PreviewCard name={names[0]!} text="שילוב סימולציות בכל מפגש למידה" />
-        <PreviewCard name={names[1]!} text="שקיפות מלאה מול הלקוח" />
+        <PreviewCard name={names[0]!} text={t("שילוב סימולציות בכל מפגש למידה")} />
+        <PreviewCard name={names[1]!} text={t("שקיפות מלאה מול הלקוח")} />
         {participation.allow_image && (
           <div style={{ flex: 1, background: "rgba(255,255,255,.95)", borderRadius: "var(--radius-lg)", padding: "2%", display: "flex", flexDirection: "column", gap: 4, boxShadow: "0 2px 8px rgba(8,8,16,.10)" }}>
             <div style={{ flex: 1, minHeight: 34, borderRadius: "var(--radius-md)", background: "var(--gradient-magenta-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--magenta-700)" }}>

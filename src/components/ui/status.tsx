@@ -2,6 +2,7 @@
 
 import type { BoardStatus, RoomStatus } from "@/lib/types";
 import { Badge, type BadgeColor } from "./Badge";
+import { useI18n } from "@/lib/i18n/react";
 
 interface StatusMeta {
   label: string;
@@ -36,19 +37,21 @@ export function roomStatusMeta(status: RoomStatus): StatusMeta {
 }
 
 export function BoardStatusBadge({ status }: { status: BoardStatus }) {
+  const { t } = useI18n();
   const m = BOARD_STATUS[status];
   return (
     <Badge color={m.color} variant="soft" dot={m.dot}>
-      {m.label}
+      {t(m.label)}
     </Badge>
   );
 }
 
 export function RoomStatusBadge({ status, solid }: { status: RoomStatus; solid?: boolean }) {
+  const { t } = useI18n();
   const m = ROOM_STATUS[status];
   return (
     <Badge color={m.color} variant={solid ? "solid" : "soft"} dot={m.dot} pulseDot={m.pulse}>
-      {m.label}
+      {t(m.label)}
     </Badge>
   );
 }
