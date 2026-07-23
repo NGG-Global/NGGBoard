@@ -22,7 +22,8 @@ export function GiphyPicker({ onSelect }: { onSelect: (item: GiphyPickerItem) =>
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // "unconfigured" = server has no GIPHY_API_KEY (503); "unavailable" = any other failure.
+  const [failed, setFailed] = useState<"unconfigured" | "unavailable" | null>(null);
   const requestSeq = useRef(0);
 
   useEffect(() => {
@@ -30,11 +31,12 @@ export function GiphyPicker({ onSelect }: { onSelect: (item: GiphyPickerItem) =>
     return () => clearTimeout(timer);
   }, [query]);
 
-  async function fetchPage(offset: number): Promise<GiphySearchResult | null> {
+  async function fetchPage(offset: number): Promise<GiphySearchResult | "unconfigured" | null> {
     const params = new URLSearchParams({ kind, offset: String(offset), lang });
     if (debouncedQuery) params.set("q", debouncedQuery);
     try {
       const res = await fetch(`/api/giphy?${params.toString()}`);
+      if (res.status === 503) return "unconfigured";
       if (!res.ok) return null;
       return (await res.json()) as GiphySearchResult;
     } catch {
@@ -47,12 +49,12 @@ export function GiphyPicker({ onSelect }: { onSelect: (item: GiphyPickerItem) =>
   useEffect(() => {
     const seq = ++requestSeq.current;
     setLoading(true);
-    setFailed(false);
+    setFailed(null);
     void fetchPage(0).then((result) => {
       if (seq !== requestSeq.current) return;
       setLoading(false);
-      if (!result) {
-        setFailed(true);
+      if (!result || result === "unconfigured") {
+        setFailed(result === "unconfigured" ? "unconfigured" : "unavailable");
         setItems([]);
         setHasMore(false);
         return;
@@ -69,7 +71,9 @@ export function GiphyPicker({ onSelect }: { onSelect: (item: GiphyPickerItem) =>
     const result = await fetchPage(items.length);
     if (seq !== requestSeq.current) return;
     setLoadingMore(false);
-    if (!result) return setFailed(true);
+    if (!result || result === "unconfigured") {
+      return setFailed(result === "unconfigured" ? "unconfigured" : "unavailable");
+    }
     // Dedupe: Giphy pages can overlap when its ranking shifts between calls.
     const known = new Set(items.map((i) => i.id));
     setItems([...items, ...result.items.filter((i) => !known.has(i.id))]);
@@ -123,7 +127,11 @@ export function GiphyPicker({ onSelect }: { onSelect: (item: GiphyPickerItem) =>
       {!loading && failed && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "28px 12px", textAlign: "center", color: "var(--text-muted)" }}>
           <IconWarning size={28} />
-          <div style={{ fontSize: "var(--text-sm)" }}>{t("חיפוש ה-GIF אינו זמין כרגע. נסו שוב מאוחר יותר.")}</div>
+          <div style={{ fontSize: "var(--text-sm)" }}>
+            {failed === "unconfigured"
+              ? t("החיבור ל-GIPHY עדיין לא הוגדר במערכת. יש להגדיר את GIPHY_API_KEY בסביבת השרת.")
+              : t("חיפוש ה-GIF אינו זמין כרגע. נסו שוב מאוחר יותר.")}
+          </div>
         </div>
       )}
 

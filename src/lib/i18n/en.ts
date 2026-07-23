@@ -26,6 +26,7 @@ export const EN: Record<string, string> = {
   "ה-GIF שנבחר": "The selected GIF",
   "הוסיפו GIF או מדבקה": "Add a GIF or sticker",
   "חיפוש ב-GIPHY…": "Search GIPHY…",
+  "החיבור ל-GIPHY עדיין לא הוגדר במערכת. יש להגדיר את GIPHY_API_KEY בסביבת השרת.": "The GIPHY connection is not configured yet. Set GIPHY_API_KEY in the server environment.",
   "חיפוש ה-GIF אינו זמין כרגע. נסו שוב מאוחר יותר.": "GIF search is unavailable right now. Please try again later.",
   "חפשו ושלחו GIF או מדבקה מספריית GIPHY": "Search and send a GIF or sticker from the GIPHY library",
   "טעינת עוד": "Load more",
