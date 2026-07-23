@@ -135,6 +135,16 @@
 /* Generic interactive surface hover used by cards / list rows / menu items */
 .ngg-hover:hover { background: var(--surface-hover); }
 .ngg-danger-hover:hover { background: var(--danger-bg) !important; color: var(--danger) !important; }
+
+/* Keyboard focus ring for interactive elements built with inline styles
+   (links, menu items, tabs, checkboxes, the ⋯ triggers). :focus-visible keeps
+   it keyboard-only, so mouse clicks don't show a ring. */
+:where(a, [role="menuitem"], [role="menuitemradio"], [role="tab"], [role="checkbox"], [tabindex="0"]):focus-visible,
+.ngg-hover:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
 .ngg-card-hover { transition: var(--transition-colors), transform var(--dur) var(--ease-out); }
 .ngg-card-hover:hover { border-color: var(--border-strong) !important; }
 

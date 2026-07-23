@@ -42,10 +42,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
+      {/* Persistent live region — always in the DOM so screen readers reliably
+          announce each new message (announcing is unreliable when the region
+          mounts together with its text). Visually hidden. */}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 }}
+      >
+        {toast ? `${toast.message}${toast.undo ? " — ניתן לבטל" : ""}` : ""}
+      </div>
       {toast && (
         <div
-          role="status"
-          aria-live="polite"
           dir="rtl"
           style={{
             position: "fixed",

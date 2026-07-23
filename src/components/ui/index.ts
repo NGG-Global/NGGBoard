@@ -7,6 +7,7 @@ export { Input, Textarea } from "./Field";
 export { Switch, Radio } from "./Toggle";
 export { ToastProvider, useToast } from "./Toast";
 export { Modal, ConfirmDialog } from "./Modal";
+export { RovingMenu } from "./Menu";
 export { EmptyState } from "./EmptyState";
 export { Spinner, LiveDot } from "./Spinner";
 export { QRCodeCanvas } from "./QRCode";

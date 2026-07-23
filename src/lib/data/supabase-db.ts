@@ -6,6 +6,7 @@ import type {
   DisplayLayout,
   Folder,
   FolderSummary,
+  LastSession,
   LiveRoom,
   ModerationActionType,
   ParticipantSession,
@@ -86,16 +87,20 @@ class SupabaseDB {
     const sb = getSupabase();
     if (!sb || (this.orgHydrated && !force)) return;
     this.orgHydrated = true;
-    const [{ data: profiles }, { data: orgs }, { data: boards }, { data: folders }] = await Promise.all([
+    const [{ data: profiles }, { data: orgs }, { data: boards }, { data: folders }, { data: rooms }] = await Promise.all([
       sb.from("profiles").select("*"),
       sb.from("organizations").select("*"),
       sb.from("boards").select("*").order("updated_at", { ascending: false }),
       sb.from("folders").select("*").order("sort", { ascending: true }),
+      // Recent rooms so the dashboard can show "live now" badges and last-session
+      // stats without opening each board. Bounded to the most recent 200.
+      sb.from("live_rooms").select("*").order("created_at", { ascending: false }).limit(200),
     ]);
     if (profiles) this.cache.profiles = profiles as Profile[];
     if (orgs) this.cache.organizations = orgs as Database["organizations"];
     if (boards) this.cache.boards = (boards as Board[]).map(normalizeBoard);
     if (folders) this.cache.folders = folders as Folder[];
+    if (rooms) for (const r of rooms as LiveRoom[]) this.upsert(this.cache.rooms, r);
     this.emit("board-list");
     this.subscribeBoardList();
   }
@@ -426,6 +431,18 @@ class SupabaseDB {
       .filter((b) => b.organization_id !== "public")
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
+  getLastSession(boardId: string): LastSession | null {
+    const last = this.cache.rooms
+      .filter((r) => r.board_id === boardId && r.status === "ended")
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    if (!last) return null;
+    return {
+      participants: last.participant_count,
+      items: this.cache.submissions.filter((s) => s.room_id === last.id && s.status !== "deleted").length,
+      endedAt: last.ended_at ?? last.created_at,
+    };
+  }
+
   getBoard(id: string): Board | null {
     return this.cache.boards.find((b) => b.id === id) ?? null;
   }

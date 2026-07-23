@@ -5,6 +5,7 @@ import type {
   ActivityEventType,
   Board,
   FolderSummary,
+  LastSession,
   DisplayLayout,
   LiveRoom,
   ModerationActionType,
@@ -248,6 +249,17 @@ class LocalDB {
     return [...this.read().boards]
       .map(normalizeBoard)
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  }
+
+  /** Stats from the board's most recent ended session (for the dashboard card). */
+  getLastSession(boardId: string): LastSession | null {
+    const last = this.listRoomsForBoard(boardId).find((r) => r.status === "ended");
+    if (!last) return null;
+    return {
+      participants: last.participant_count,
+      items: this.listSubmissions(last.id).length,
+      endedAt: last.ended_at ?? last.created_at,
+    };
   }
 
   getBoard(id: string): Board | null {

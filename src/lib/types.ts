@@ -94,6 +94,13 @@ export interface FolderSummary {
   count: number;
 }
 
+/** Compact stats from a board's most recent ended session, for the board card. */
+export interface LastSession {
+  participants: number;
+  items: number;
+  endedAt: string;
+}
+
 export interface Board {
   id: string;
   organization_id: string;

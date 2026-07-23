@@ -18,7 +18,7 @@ import {
   IconUsers,
   IconX,
 } from "@/components/ui/icons";
-import { LiveDot, useToast } from "@/components/ui";
+import { LiveDot, RovingMenu, useToast } from "@/components/ui";
 import { BOARD_DND_MIME, DashDndProvider, useDashDnd } from "./dnd";
 
 export type DashView = "all" | "shared" | "active" | "templates" | "archive" | "admin";
@@ -226,7 +226,9 @@ export function AppShell({
           {menuOpen && (
             <>
               <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
-              <div
+              <RovingMenu
+                onClose={() => setMenuOpen(false)}
+                ariaLabel="תפריט משתמש"
                 style={{
                   position: "absolute",
                   bottom: 52,
@@ -241,6 +243,7 @@ export function AppShell({
                 }}
               >
                 <button
+                  role="menuitem"
                   onClick={() => {
                     void signOut().then(() => router.replace("/login"));
                   }}
@@ -260,7 +263,7 @@ export function AppShell({
                 >
                   התנתקות
                 </button>
-              </div>
+              </RovingMenu>
             </>
           )}
         </div>
@@ -385,7 +388,10 @@ function FolderNav({ current, activeFolder }: { current: DashView; activeFolder:
               key={f.name}
               href={`/app/boards?view=all&folder=${encodeURIComponent(f.name)}`}
               aria-current={active ? "page" : undefined}
-              // Draggable to reorder; also a drop target for board filing.
+              // Accessibility: filing a board into a folder has a full keyboard
+              // path (each board's ⋯ menu → "העבר לתיקייה"). Folder *reordering*
+              // is a pointer-only enhancement — the persisted order still applies
+              // for everyone, and nothing depends on being able to reorder.
               draggable
               onDragStart={(e) => { setDraggingFolder(f.name); e.dataTransfer.effectAllowed = "move"; }}
               onDragEnd={() => { setDraggingFolder(null); setDropTarget(null); }}

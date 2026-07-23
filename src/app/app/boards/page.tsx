@@ -12,7 +12,7 @@ import { BoardCard } from "@/components/app/BoardCard";
 import { BoardThumbnail } from "@/components/app/BoardThumbnail";
 import { MoveToFolderDialog } from "@/components/app/MoveToFolderDialog";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
-import { Button, ConfirmDialog, EmptyState, Input, LiveDot, Modal, useToast } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, Input, LiveDot, Modal, RovingMenu, useToast } from "@/components/ui";
 import { IconFolder, IconGrid, IconMonitor, IconSearch, IconTemplate } from "@/components/ui/icons";
 
 const PAGE_TITLES: Record<DashView, string> = {
@@ -428,10 +428,10 @@ function FolderMenu({ folder, onDone }: { folder: string; onDone: () => void }) 
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
-          <div role="menu" style={{ position: "absolute", insetInlineStart: 0, top: 34, zIndex: 30, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", padding: 5, minWidth: 150, display: "flex", flexDirection: "column" }}>
+          <RovingMenu onClose={() => setOpen(false)} ariaLabel={`פעולות עבור התיקייה ${folder}`} style={{ position: "absolute", insetInlineStart: 0, top: 34, zIndex: 30, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", padding: 5, minWidth: 150, display: "flex", flexDirection: "column" }}>
             <button role="menuitem" onClick={() => { setOpen(false); setName(folder); setRenaming(true); }} className="ngg-hover" style={menuBtn(false)}>שינוי שם</button>
             <button role="menuitem" onClick={() => { setOpen(false); setConfirmDelete(true); }} className="ngg-hover" style={menuBtn(true)}>מחיקת תיקייה</button>
-          </div>
+          </RovingMenu>
         </>
       )}
 

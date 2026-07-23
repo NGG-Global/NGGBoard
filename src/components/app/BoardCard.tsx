@@ -7,7 +7,7 @@ import type { Board } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
-import { BoardStatusBadge, Badge, ConfirmDialog, LiveDot, useToast } from "@/components/ui";
+import { BoardStatusBadge, Badge, ConfirmDialog, LiveDot, RovingMenu, useToast } from "@/components/ui";
 import { IconFolder } from "@/components/ui/icons";
 import { BoardThumbnail } from "./BoardThumbnail";
 import { MoveToFolderDialog } from "./MoveToFolderDialog";
@@ -33,6 +33,7 @@ export function BoardCard({
   const shared = board.created_by !== CURRENT_USER_ID;
   const owner = db.getProfile(board.created_by);
   const activeRoom = useLiveQuery("board-list", () => db.getActiveRoomForBoard(board.id));
+  const lastSession = useLiveQuery("board-list", () => (activeRoom ? null : db.getLastSession(board.id)), [!!activeRoom]);
   const dnd = useDashDnd();
   const dragging = dnd.draggingId === board.id;
 
@@ -40,7 +41,7 @@ export function BoardCard({
 
   return (
     <div
-      className="ngg-card-hover"
+      className="ngg-card-hover ngg-card-in"
       // Drag the card onto a folder in the sidebar to file it. The ⋯ menu is the
       // pointer-free fallback (touch / keyboard).
       draggable
@@ -135,8 +136,9 @@ export function BoardCard({
             {menuOpen && (
               <>
                 <div onClick={closeMenu} style={{ position: "fixed", inset: 0, zIndex: 25 }} />
-                <div
-                  role="menu"
+                <RovingMenu
+                  onClose={closeMenu}
+                  ariaLabel={`פעולות עבור ${board.internal_name}`}
                   style={{
                     position: "absolute",
                     insetInlineEnd: 0,
@@ -205,7 +207,7 @@ export function BoardCard({
                   <MenuItem danger onClick={() => { closeMenu(); setConfirmDelete(true); }}>
                     מחיקה לצמיתות
                   </MenuItem>
-                </div>
+                </RovingMenu>
               </>
             )}
           </div>
@@ -241,7 +243,9 @@ export function BoardCard({
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
           {activeRoom
             ? `${activeRoom.participant_count} משתתפים · ${db.listSubmissions(activeRoom.id).length} פריטי תוכן`
-            : `נערך ${formatAgo(board.updated_at)}${board.last_activated_at ? ` · הופעל ${formatAgo(board.last_activated_at)}` : ""}`}
+            : lastSession
+              ? `מפגש אחרון · ${lastSession.participants} משתתפים · ${lastSession.items} פריטים · ${formatAgo(lastSession.endedAt)}`
+              : `נערך ${formatAgo(board.updated_at)}`}
         </div>
       </div>
 
