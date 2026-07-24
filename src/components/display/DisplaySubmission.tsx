@@ -5,7 +5,8 @@ import { useI18n } from "@/lib/i18n/react";
 import { initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
 import { isGiphyMediaUrl } from "@/lib/giphy";
-import { IconEyeOff, IconMonitor, IconPin, IconTrash } from "@/components/ui/icons";
+import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbnailUrl } from "@/lib/youtube";
+import { IconEyeOff, IconMonitor, IconPin, IconPlay, IconTrash } from "@/components/ui/icons";
 
 export interface FacilitatorCardActions {
   focused: boolean;
@@ -102,6 +103,10 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         </div>
       )}
 
+      {submission.type === "video" && submission.media_url && (
+        <VideoMedia mediaUrl={submission.media_url} focus={!!focus} hasCaption={!!submission.text_content} />
+      )}
+
       {submission.text_content && (
         <div style={{ fontSize: textSize, fontWeight: "var(--weight-bold)", color: "var(--neutral-950)", lineHeight: "var(--leading-snug)", overflowWrap: "break-word" }}>
           {submission.text_content}
@@ -133,6 +138,51 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Video media block. On the wall it stays a lightweight thumbnail (a grid of
+ * live iframes would crawl and be unwatchable anyway); when the facilitator
+ * focuses the submission it becomes a real embedded player. The embed URL is
+ * built from the PARSED video id — never from the raw stored URL.
+ */
+function VideoMedia({ mediaUrl, focus, hasCaption }: { mediaUrl: string; focus: boolean; hasCaption: boolean }) {
+  const { t } = useI18n();
+  const videoId = parseYouTubeVideoId(mediaUrl);
+  if (!videoId) return null;
+  const frame: React.CSSProperties = {
+    position: "relative",
+    borderRadius: "var(--radius-lg)",
+    overflow: "hidden",
+    minHeight: focus ? 220 : 120,
+    flex: hasCaption ? "none" : 1,
+    background: "#08080f",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+  if (focus) {
+    return (
+      <div style={{ ...frame, aspectRatio: "16 / 9" }}>
+        <iframe
+          src={youTubeEmbedUrl(videoId, { autoplay: true })}
+          title={t("סרטון ששלח משתתף")}
+          allow="autoplay; encrypted-media; picture-in-picture"
+          allowFullScreen
+          style={{ width: "100%", height: "100%", border: 0, display: "block" }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div style={frame}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={youTubeThumbnailUrl(videoId)} alt={t("סרטון ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.92 }} />
+      <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", background: "rgba(8,8,16,.28)" }}>
+        <IconPlay size={40} />
+      </span>
     </div>
   );
 }

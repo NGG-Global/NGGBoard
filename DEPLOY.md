@@ -26,6 +26,7 @@ Preview if you want preview deploys to hit Supabase too):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *your anon (public) key* |
 | `NEXT_PUBLIC_APP_URL` | your Vercel URL, e.g. `https://ngg-boards.vercel.app` |
 | `GIPHY_API_KEY` | *your Giphy API key* (server-only secret — enables the participant GIF/sticker picker) |
+| `YOUTUBE_API_KEY` | *your YouTube Data API v3 key* (server-only secret — enables video search; link-paste works without it) |
 
 The four `NEXT_PUBLIC_*` entries are public client values (the anon key is
 designed to ship in the browser bundle). `GIPHY_API_KEY` is a **server-only

@@ -5,12 +5,14 @@ import { useI18n } from "@/lib/i18n/react";
 import { formatAgo, initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
 import { isGiphyMediaUrl } from "@/lib/giphy";
+import { parseYouTubeVideoId, youTubeThumbnailUrl, youTubeWatchUrl } from "@/lib/youtube";
 import { avatarColors } from "@/components/display/DisplaySubmission";
 import {
   IconCheck,
   IconEye,
   IconMonitor,
   IconPin,
+  IconPlay,
   IconTrash,
   IconX,
 } from "@/components/ui/icons";
@@ -85,6 +87,23 @@ export function ControlSubmissionCard({
             <img src={submission.media_url} alt={submission.text_content ?? t("תמונה ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: isGiphyMediaUrl(submission.media_url) ? "contain" : "cover" }} />
           )}
         </div>
+      )}
+
+      {/* Video: thumbnail linking to YouTube so the facilitator can preview before approving. */}
+      {submission.type === "video" && submission.media_url && parseYouTubeVideoId(submission.media_url) && (
+        <a
+          href={youTubeWatchUrl(parseYouTubeVideoId(submission.media_url)!)}
+          target="_blank"
+          rel="noreferrer"
+          title={t("פתיחת הסרטון ב-YouTube")}
+          style={{ position: "relative", height: 118, borderRadius: "var(--radius-lg)", overflow: "hidden", display: "flex", background: "#08080f" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={youTubeThumbnailUrl(parseYouTubeVideoId(submission.media_url)!)} alt={submission.text_content ?? t("סרטון ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.92 }} />
+          <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", background: "rgba(8,8,16,.28)" }}>
+            <IconPlay size={26} />
+          </span>
+        </a>
       )}
 
       {submission.text_content && (

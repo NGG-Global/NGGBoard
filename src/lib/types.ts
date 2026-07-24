@@ -49,6 +49,8 @@ export interface BoardParticipationSettings {
   allow_image: boolean;
   /** Allow picking a GIF / sticker from the Giphy library. */
   allow_giphy: boolean;
+  /** Allow searching / linking a YouTube video. */
+  allow_youtube: boolean;
   name_policy: NamePolicy;
   anonymous_allowed: boolean;
   multiple_submissions: boolean;
@@ -168,7 +170,7 @@ export interface LiveRoom {
   created_at: string;
 }
 
-export type SubmissionType = "text" | "image";
+export type SubmissionType = "text" | "image" | "video";
 
 /**
  * Moderation/visibility lifecycle of a single submission.
