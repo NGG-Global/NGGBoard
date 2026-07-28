@@ -11,12 +11,15 @@ import { findBlockedWord, sanitizeText } from "@/lib/utils";
 import { validateSubmissionText } from "@/lib/validation";
 import { Button, Input, Spinner } from "@/components/ui";
 import { LanguageToggle, useI18n } from "@/lib/i18n/react";
-import { IconCheck, IconClock, IconImage, IconSticker, IconText, IconWarning, IconWifiOff } from "@/components/ui/icons";
+import { IconCheck, IconClock, IconImage, IconPlay, IconSticker, IconText, IconWarning, IconWifiOff } from "@/components/ui/icons";
 import { ImageUploadField } from "./ImageUploadField";
 import { GiphyPicker } from "./GiphyPicker";
 import type { GiphyPickerItem } from "@/lib/giphy";
+import { YouTubePicker } from "./YouTubePicker";
+import type { YouTubePickerItem } from "@/lib/youtube";
+import { youTubeEmbedUrl, youTubeWatchUrl } from "@/lib/youtube";
 
-type Step = "join" | "zone" | "choose" | "text" | "image" | "gif" | "done";
+type Step = "join" | "zone" | "choose" | "text" | "image" | "gif" | "video" | "done";
 
 function sessionKey(publicId: string) {
   return `ngg_participant_${publicId}`;
@@ -99,6 +102,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const canText = board.participation.allow_text;
   const canImage = board.participation.allow_image;
   const canGif = board.participation.allow_giphy;
+  const canVideo = board.participation.allow_youtube;
   const allowMultiple = board.participation.multiple_submissions;
   const limitReached = !allowMultiple && mySubs.length > 0;
   const zoned = isZoned(board);
@@ -157,7 +161,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
       )}
 
       {/* Zone picker (zoned boards). Also guards choose/compose if no zone yet. */}
-      {((step === "zone") || (zoned && !zoneId && (step === "choose" || step === "text" || step === "image" || step === "gif"))) && (
+      {((step === "zone") || (zoned && !zoneId && (step === "choose" || step === "text" || step === "image" || step === "gif" || step === "video"))) && (
         <ZoneStep
           zones={zones}
           onPick={(id) => { setZoneId(id); setStep("choose"); }}
@@ -169,6 +173,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           canText={canText}
           canImage={canImage}
           canGif={canGif}
+          canVideo={canVideo}
           limitReached={limitReached}
           submittedCount={mySubs.length}
           zone={selectedZone}
@@ -176,6 +181,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           onText={() => setStep("text")}
           onImage={() => setStep("image")}
           onGif={() => setStep("gif")}
+          onVideo={() => setStep("video")}
         />
       )}
 
@@ -205,6 +211,18 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 
       {step === "gif" && sessionId && (!zoned || zoneId) && (
         <GifStep
+          room={room}
+          board={board}
+          sessionId={sessionId}
+          displayName={name}
+          zone={selectedZone}
+          onDone={() => setStep("done")}
+          onBack={() => setStep("choose")}
+        />
+      )}
+
+      {step === "video" && sessionId && (!zoned || zoneId) && (
+        <VideoStep
           room={room}
           board={board}
           sessionId={sessionId}
@@ -293,7 +311,7 @@ function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void
   );
 }
 
-function ChooseStep({ canText, canImage, canGif, limitReached, submittedCount, zone, onChangeZone, onText, onImage, onGif }: { canText: boolean; canImage: boolean; canGif: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void }) {
+function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
   const { t } = useI18n();
   if (limitReached) {
     return <StateCard icon={<IconCheck size={40} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
@@ -307,6 +325,7 @@ function ChooseStep({ canText, canImage, canGif, limitReached, submittedCount, z
         {canText && <ChoiceCard icon={<IconText size={24} />} title={t("כתבו תשובה")} desc={t("שתפו רעיון או תשובה קצרה בטקסט")} onClick={onText} />}
         {canImage && <ChoiceCard icon={<IconImage size={24} />} title={t("הוסיפו תמונה")} desc={t("צלמו או העלו תמונה מהגלריה")} onClick={onImage} />}
         {canGif && <ChoiceCard icon={<IconSticker size={24} />} title={t("הוסיפו GIF או מדבקה")} desc={t("חפשו ושלחו GIF או מדבקה מספריית GIPHY")} onClick={onGif} />}
+        {canVideo && <ChoiceCard icon={<IconPlay size={24} />} title={t("הוסיפו סרטון YouTube")} desc={t("חפשו סרטון או הדביקו קישור — הוא יוצג על הלוח")} onClick={onVideo} />}
       </div>
     </div>
   );
@@ -483,6 +502,78 @@ function GifStep({ room, board, sessionId, displayName, zone, onDone, onBack }: 
           <StickyAction>
             <Button variant="primary" size="lg" block disabled={!canSubmit} onClick={submit}>
               {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח GIF") : t("קבלת התוכן מושהית")}
+            </Button>
+          </StickyAction>
+        </>
+      )}
+    </div>
+  );
+}
+
+function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+  const { t } = useI18n();
+  const [selected, setSelected] = useState<YouTubePickerItem | null>(null);
+  const [caption, setCaption] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const canSubmit = room.status === "active" && !!selected && !submitting;
+
+  function submit() {
+    if (!selected) return;
+    const mediaUrl = youTubeWatchUrl(selected.id);
+    // Same duplicate / rate-limit protection as the other submission types.
+    const mine = db.listSubmissionsForParticipant(room.id, sessionId);
+    const last = mine[0];
+    if (last && Date.now() - new Date(last.created_at).getTime() < SUBMISSION_RATE_LIMIT_MS) {
+      return setError(t("רגע לפני — נסו שוב עוד כמה שניות"));
+    }
+    if (mine.some((s) => s.media_url === mediaUrl)) {
+      return setError(t("כבר שלחתם את הסרטון הזה"));
+    }
+    setSubmitting(true);
+    setTimeout(() => {
+      db.createSubmission({
+        roomId: room.id,
+        type: "video",
+        mediaUrl,
+        text: caption.trim() || null,
+        participantSessionId: sessionId,
+        displayName,
+        anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+        zoneId: zone?.id ?? null,
+        moderationMode: board.moderation.mode,
+      });
+      setSubmitting(false);
+      onDone();
+    }, 350);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <BackLink onClick={onBack} />
+      {zone && <ZoneBanner zone={zone} />}
+      <div style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{t("הוסיפו סרטון YouTube")}</div>
+
+      {!selected && <YouTubePicker onSelect={(item) => { setSelected(item); setError(null); }} />}
+
+      {selected && (
+        <>
+          <div style={{ borderRadius: "var(--radius-xl)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-sunken)", aspectRatio: "16 / 9" }}>
+            <iframe
+              src={youTubeEmbedUrl(selected.id)}
+              title={selected.title || t("הסרטון שנבחר")}
+              allow="accelerometer; encrypted-media; picture-in-picture"
+              allowFullScreen
+              style={{ width: "100%", height: "100%", border: 0, display: "block" }}
+            />
+          </div>
+          {selected.title && <div dir="auto" style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)" }}>{selected.title}</div>}
+          <Button variant="outline" size="md" block onClick={() => setSelected(null)}>{t("בחרו סרטון אחר")}</Button>
+          <Input label={t("כיתוב (אופציונלי)")} value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 120))} placeholder={t("הוסיפו כיתוב קצר")} />
+          {error && <div style={{ fontSize: "var(--text-2xs)", color: "var(--danger)", fontWeight: "var(--weight-semibold)" }}>{error}</div>}
+          <StickyAction>
+            <Button variant="primary" size="lg" block disabled={!canSubmit} onClick={submit}>
+              {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח סרטון") : t("קבלת התוכן מושהית")}
             </Button>
           </StickyAction>
         </>

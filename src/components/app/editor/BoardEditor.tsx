@@ -64,6 +64,7 @@ function blankDraft(): Draft {
       allow_text: true,
       allow_image: true,
       allow_giphy: true,
+      allow_youtube: true,
       name_policy: "optional" as NamePolicy,
       anonymous_allowed: false,
       multiple_submissions: true,
@@ -170,7 +171,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
   }
 
   const summaries = useMemo(() => {
-    const perms = [draft.participation.allow_text && t("טקסט"), draft.participation.allow_image && t("תמונות"), draft.participation.allow_giphy && "GIF", draft.participation.anonymous_allowed && t("אנונימי")]
+    const perms = [draft.participation.allow_text && t("טקסט"), draft.participation.allow_image && t("תמונות"), draft.participation.allow_giphy && "GIF", draft.participation.allow_youtube && t("וידאו"), draft.participation.anonymous_allowed && t("אנונימי")]
       .filter(Boolean)
       .join(" · ") || t("ללא");
     return {
@@ -320,6 +321,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
             <Switch label={t("תשובות טקסט")} description={t("המשתתפים כותבים תשובה קצרה מהנייד")} checked={draft.participation.allow_text} onChange={(v) => patchParticipation({ allow_text: v })} />
             <Switch label={t("תמונות")} description={t("צילום או העלאה מהגלריה")} checked={draft.participation.allow_image} onChange={(v) => patchParticipation({ allow_image: v })} />
             <Switch label={t("GIF ומדבקות")} description={t("בחירת GIF או מדבקה מספריית GIPHY")} checked={draft.participation.allow_giphy} onChange={(v) => patchParticipation({ allow_giphy: v })} />
+            <Switch label={t("סרטוני YouTube")} description={t("חיפוש או הדבקת קישור לסרטון שיוצג על הלוח")} checked={draft.participation.allow_youtube} onChange={(v) => patchParticipation({ allow_youtube: v })} />
             <Switch label={t("מצב אנונימי")} description={t("שמות המשתתפים לא יוצגו על המסך")} checked={draft.participation.anonymous_allowed} onChange={(v) => patchParticipation({ anonymous_allowed: v })} />
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("שם המשתתף")}</div>

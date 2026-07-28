@@ -212,6 +212,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server-only
 NEXT_PUBLIC_APP_URL=https://boards.yourdomain.com
 GIPHY_API_KEY=your-giphy-api-key                  # server-only (GIF picker)
+YOUTUBE_API_KEY=your-youtube-data-api-key         # server-only (video search)
 ```
 
 ### 6. The Supabase data client (already implemented)
@@ -269,6 +270,37 @@ participation section, `allow_giphy`).
   so the server-side submission policy honours `allow_giphy` — it lets a board
   accept GIFs while photo uploads are off, and vice versa.
 
+## YouTube video submissions
+
+Participants can search YouTube (or paste a video link) and send a video to
+the board (`allow_youtube` toggle in the editor's participation section). A
+pick is stored as a `video` submission whose `media_url` is the canonical
+watch URL.
+
+- **Key handling:** same pattern as Giphy — the browser calls `/api/youtube`,
+  and the server signs the upstream request with the server-only
+  `YOUTUBE_API_KEY` (YouTube Data API v3, created in Google Cloud Console).
+  **Pasting a link needs no key at all**: the video id is parsed locally and
+  the thumbnail comes from YouTube's public image CDN — so the feature
+  degrades gracefully to link-paste when the key is missing.
+- **Quota awareness:** a search costs 100 units of the API's default
+  10,000/day quota (≈100 searches/day); identical requests are cached
+  server-side for 60s. The picker's opening screen uses the cheap (1 unit)
+  regional most-popular list instead of a search.
+- **Display behaviour:** on the card wall a video renders as a lightweight
+  thumbnail with a play badge; when the facilitator **focuses** it, it becomes
+  a real embedded player (privacy-enhanced `youtube-nocookie.com`, autoplay).
+  The moderation card links out to YouTube so facilitators can preview before
+  approving. Embeds are always built from the parsed 11-character video id —
+  never from the raw stored URL — so a crafted URL cannot inject an arbitrary
+  iframe.
+- **Search safety:** the proxy pins `safeSearch=strict` and only returns
+  embeddable videos; Hebrew UI passes `relevanceLanguage=he` and a region of
+  `IL` for the popular list.
+- **Supabase backend:** run `supabase/migrations/0009_youtube.sql` (after
+  `0008`) — it adds the `video` enum value and teaches `create_submission` to
+  honour `allow_youtube` and validate the video URL shape.
+
 ## Manual QA checklist
 
 **Desktop facilitator flow**
@@ -286,6 +318,7 @@ participation section, `allow_giphy`).
 - [ ] Name required / optional / disabled behaves per board config
 - [ ] Text submit with char counter; image capture + gallery + replace/remove
 - [ ] GIF/sticker picker: trending on open, Hebrew search, tab switch, load more, replace, caption, send
+- [ ] YouTube: popular on open, search, paste-link (with and without API key), preview, send; focus on display plays the video
 - [ ] Correct confirmation (published vs "waiting for approval")
 - [ ] Blocked from submitting to paused / suspended / ended rooms
 - [ ] Duplicate + rapid-submit protection

@@ -6,7 +6,7 @@ const DEFAULT_APPEARANCE: Board["appearance"] = {
   client_logo_url: null, show_org_logo: true, card_style: "elevated", font_scale: "md",
 };
 const DEFAULT_PARTICIPATION: Board["participation"] = {
-  allow_text: true, allow_image: true, allow_giphy: true, name_policy: "optional", anonymous_allowed: true,
+  allow_text: true, allow_image: true, allow_giphy: true, allow_youtube: true, name_policy: "optional", anonymous_allowed: true,
   multiple_submissions: true, text_char_limit: DEFAULT_TEXT_CHAR_LIMIT,
   image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB, allow_participant_edit: false,
   allow_participant_delete: true,

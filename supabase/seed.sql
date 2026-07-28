@@ -25,7 +25,7 @@ on conflict (id) do nothing;
 --   'איזה רעיון אחד תרצו שנאמץ כבר השנה?',
 --   'ready',
 --   '{"background_theme":"ink","show_org_logo":true,"card_style":"elevated","font_scale":"md","client_logo_url":null,"background_color":null,"background_image_url":null}'::jsonb,
---   '{"allow_text":true,"allow_image":true,"allow_giphy":true,"name_policy":"optional","anonymous_allowed":true,"multiple_submissions":true,"text_char_limit":280,"image_size_limit_mb":8,"allow_participant_edit":false,"allow_participant_delete":true}'::jsonb,
+--   '{"allow_text":true,"allow_image":true,"allow_giphy":true,"allow_youtube":true,"name_policy":"optional","anonymous_allowed":true,"multiple_submissions":true,"text_char_limit":280,"image_size_limit_mb":8,"allow_participant_edit":false,"allow_participant_delete":true}'::jsonb,
 --   '{"mode":"immediate","hide_identity_on_display":false,"blocked_words":[]}'::jsonb,
 --   'organization', 'wall'
 -- );
