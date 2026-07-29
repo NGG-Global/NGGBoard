@@ -176,14 +176,13 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
               </div>
             ))}
           </div>
-        ) : (
+        ) : scrollable ? (
           <div
             style={{
               display: "grid",
               gridTemplateColumns: `repeat(${cols}, 1fr)`,
               gap: "clamp(12px, 1.4vw, 22px)",
-              height: scrollable ? undefined : "100%",
-              gridAutoRows: scrollable ? "min-content" : "1fr",
+              gridAutoRows: "min-content",
               alignContent: "start",
             }}
           >
@@ -191,6 +190,8 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
               <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
             ))}
           </div>
+        ) : (
+          <BalancedWall items={shown} board={board} scale={densityScale} facFor={facFor} />
         )}
       </div>
 
@@ -259,6 +260,72 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
   );
 }
 
+/** Preferred item count in the widest row of the balanced projector wall. */
+function balancedColumns(n: number): number {
+  if (n <= 3) return Math.max(n, 1);
+  if (n <= 8) return Math.min(Math.ceil(n / 2), 4);
+  if (n <= 12) return 4;
+  return 5;
+}
+
+/** Ideal (pre-shrink) card width in px, sized to what the content warrants. */
+function idealCardWidth(s: Submission): number {
+  if (s.type !== "text" && s.media_url) return 480;
+  const len = s.text_content?.length ?? 0;
+  return len <= 45 ? 340 : len <= 130 ? 460 : 580;
+}
+
+/**
+ * Projector wall: a balanced, centered composition instead of a stretched
+ * grid. Items split into rows whose sizes differ by at most one (a shorter
+ * last row sits centered), the whole block is vertically centered, and each
+ * card takes only the width/height its content warrants — a short quote stays
+ * compact, media keeps a consistent frame, nothing balloons to fill a track.
+ */
+function BalancedWall({
+  items,
+  board,
+  scale,
+  facFor,
+}: {
+  items: Submission[];
+  board: Board;
+  scale: number;
+  facFor: (s: Submission) => FacilitatorCardActions | undefined;
+}) {
+  const n = items.length;
+  const cols = balancedColumns(n);
+  const rowCount = Math.max(1, Math.ceil(n / cols));
+  // Even distribution: 7 items in rows of ≤4 become [4,3], 10 become [4,3,3].
+  const base = Math.floor(n / rowCount);
+  const extra = n % rowCount;
+  const rows: Submission[][] = [];
+  let idx = 0;
+  for (let r = 0; r < rowCount; r++) {
+    const size = base + (r < extra ? 1 : 0);
+    rows.push(items.slice(idx, idx + size));
+    idx += size;
+  }
+  const dense = rowCount >= 4;
+  const gap = "clamp(12px, 1.4vw, 22px)";
+  // A near-empty board still shouldn't produce billboard-sized cards; give the
+  // one-or-two-item case a little extra presence and cap it there.
+  const fewBoost = n <= 2 ? 1.2 : 1;
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap }}>
+      {rows.map((row, ri) => (
+        <div key={ri} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap, minHeight: 0 }}>
+          {row.map((s) => (
+            <div key={s.id} style={{ flex: `0 1 ${Math.round(idealCardWidth(s) * fewBoost)}px`, minWidth: 0, display: "flex", justifyContent: "center" }}>
+              <DisplaySubmission submission={s} board={board} scale={scale} facilitator={facFor(s)} hug dense={dense} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Divided board: one titled column per zone, cards flow inside their zone. */
 function ZonedContent({
   zones,
@@ -306,7 +373,7 @@ function ZonedContent({
               {items.length === 0 ? (
                 <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
               ) : (
-                (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} />)
+                (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug dense={zones.length >= 3} />)
               )}
             </div>
           </div>
