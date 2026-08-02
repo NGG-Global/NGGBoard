@@ -35,18 +35,35 @@ interface Props {
   scale: number;
   focus?: boolean;
   facilitator?: FacilitatorCardActions;
+  /**
+   * Content-hugging mode (balanced projector wall): the card takes the height
+   * its content needs instead of stretching to fill a grid track, media gets a
+   * consistent aspect ratio, and long texts clamp instead of growing the card.
+   */
+  hug?: boolean;
+  /** Tighter hug variant for pages with 4+ rows so the composition still fits one screen. */
+  dense?: boolean;
 }
 
 /** A single submission rendered for the projector — large, high-contrast. */
-export function DisplaySubmission({ submission, board, scale, focus, facilitator }: Props) {
+export function DisplaySubmission({ submission, board, scale, focus, facilitator, hug, dense }: Props) {
   const { t } = useI18n();
   const hideIdentity = board.moderation.hide_identity_on_display;
   const anonymous = submission.anonymous || hideIdentity || !submission.display_name;
   const name = anonymous ? t("אנונימי") : submission.display_name!;
   const [avBg, avFg] = anonymous ? ["var(--neutral-100)", "var(--neutral-600)"] : avatarColors(submission.id);
 
+  // Long answers read better a step smaller; short quotes can carry more size.
+  const textLen = submission.text_content?.length ?? 0;
+  const lenFactor = focus ? 1 : textLen > 220 ? 0.78 : textLen > 120 ? 0.88 : textLen > 60 ? 1 : 1.12;
+
   const nameSize = `${(focus ? 1.6 : 1) * scale}rem`;
-  const textSize = `${(focus ? 3 : 1.35) * scale}rem`;
+  const textSize = `${(focus ? 3 : 1.35) * scale * lenFactor}rem`;
+  const hasMedia = submission.type !== "text" && !!submission.media_url;
+  // Mindful containers: clamp text so one verbose answer can't dominate the
+  // composition — tighter when it captions media, roomier when text-only.
+  const clampLines = hug && !focus ? (hasMedia ? (dense ? 2 : 3) : dense ? 4 : 9) : undefined;
+  const mediaMaxHeight = dense ? "min(22vh, 300px)" : "min(34vh, 380px)";
 
   return (
     <div
@@ -60,7 +77,8 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         gap: focus ? 20 : 12,
         boxShadow: focus ? "0 30px 80px rgba(8,8,16,.35)" : "0 4px 16px rgba(8,8,16,.14)",
         border: submission.pinned ? "2px solid var(--magenta-400)" : "1px solid rgba(8,8,16,.06)",
-        height: "100%",
+        height: hug ? "auto" : "100%",
+        width: "100%",
         breakInside: "avoid",
       }}
     >
@@ -88,8 +106,10 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
           style={{
             borderRadius: "var(--radius-lg)",
             overflow: "hidden",
-            minHeight: focus ? 220 : 120,
-            flex: submission.text_content ? "none" : 1,
+            minHeight: hug ? undefined : focus ? 220 : 120,
+            aspectRatio: hug ? "4 / 3" : undefined,
+            maxHeight: hug ? mediaMaxHeight : undefined,
+            flex: submission.text_content || hug ? "none" : 1,
             background: isSeedImage(submission.media_url) ? seedGradientFor(submission.media_url) : undefined,
             display: "flex",
             alignItems: "center",
@@ -104,11 +124,22 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
       )}
 
       {submission.type === "video" && submission.media_url && (
-        <VideoMedia mediaUrl={submission.media_url} focus={!!focus} hasCaption={!!submission.text_content} />
+        <VideoMedia mediaUrl={submission.media_url} focus={!!focus} hasCaption={!!submission.text_content} hug={hug} maxHeight={mediaMaxHeight} />
       )}
 
       {submission.text_content && (
-        <div style={{ fontSize: textSize, fontWeight: "var(--weight-bold)", color: "var(--neutral-950)", lineHeight: "var(--leading-snug)", overflowWrap: "break-word" }}>
+        <div
+          style={{
+            fontSize: textSize,
+            fontWeight: "var(--weight-bold)",
+            color: "var(--neutral-950)",
+            lineHeight: "var(--leading-snug)",
+            overflowWrap: "break-word",
+            ...(clampLines
+              ? { display: "-webkit-box", WebkitLineClamp: clampLines, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }
+              : {}),
+          }}
+        >
           {submission.text_content}
         </div>
       )}
@@ -148,7 +179,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
  * focuses the submission it becomes a real embedded player. The embed URL is
  * built from the PARSED video id — never from the raw stored URL.
  */
-function VideoMedia({ mediaUrl, focus, hasCaption }: { mediaUrl: string; focus: boolean; hasCaption: boolean }) {
+function VideoMedia({ mediaUrl, focus, hasCaption, hug, maxHeight }: { mediaUrl: string; focus: boolean; hasCaption: boolean; hug?: boolean; maxHeight?: string }) {
   const { t } = useI18n();
   const videoId = parseYouTubeVideoId(mediaUrl);
   if (!videoId) return null;
@@ -156,8 +187,10 @@ function VideoMedia({ mediaUrl, focus, hasCaption }: { mediaUrl: string; focus: 
     position: "relative",
     borderRadius: "var(--radius-lg)",
     overflow: "hidden",
-    minHeight: focus ? 220 : 120,
-    flex: hasCaption ? "none" : 1,
+    minHeight: hug ? undefined : focus ? 220 : 120,
+    aspectRatio: hug && !focus ? "16 / 9" : undefined,
+    maxHeight: hug && !focus ? maxHeight : undefined,
+    flex: hasCaption || hug ? "none" : 1,
     background: "#08080f",
     display: "flex",
     alignItems: "center",

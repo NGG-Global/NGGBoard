@@ -54,6 +54,11 @@
 @keyframes ngg-spin {
   to { transform: rotate(360deg); }
 }
+@keyframes ngg-pop {
+  0%   { opacity: 0; transform: scale(0.5); }
+  60%  { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
 
 @keyframes ngg-shimmer {
   0% { background-position: 200% 0; }
@@ -64,6 +69,14 @@
 .ngg-pulse-dot-light { animation: ngg-pulse-dot-light 1.6s ease-out infinite; }
 .ngg-card-in { animation: ngg-card-in 0.5s cubic-bezier(0.2, 0.7, 0.3, 1); }
 .ngg-fade-up { animation: ngg-fade-up 0.35s var(--ease-out) both; }
+.ngg-pop { animation: ngg-pop 0.55s cubic-bezier(0.2, 0.7, 0.3, 1.1) both; }
+
+/* Touch-friendly tile (participant screen): gentle lift on hover, press-down on tap */
+.ngg-tile {
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ngg-tile:hover { border-color: var(--border-strong) !important; box-shadow: var(--shadow-sm); }
+.ngg-tile:active { transform: scale(0.97); }
 .ngg-skeleton {
   background: linear-gradient(90deg, var(--surface-sunken) 25%, var(--border) 37%, var(--surface-sunken) 63%);
   background-size: 200% 100%;
@@ -72,8 +85,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ngg-pulse-dot, .ngg-pulse-dot-light, .ngg-card-in, .ngg-fade-up { animation: none !important; }
+  .ngg-pulse-dot, .ngg-pulse-dot-light, .ngg-card-in, .ngg-fade-up, .ngg-pop { animation: none !important; }
   .ngg-skeleton { animation: none !important; }
+  .ngg-tile, .ngg-tile:active { transition: none; transform: none; }
 }
 
 /* Board detail: stack the two columns on narrow screens */

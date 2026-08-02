@@ -137,8 +137,10 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
     setStep(isZoned(board!) ? "zone" : "choose");
   }
 
+  const progress = step === "join" ? 0 : step === "zone" || step === "choose" ? 1 : step === "done" ? 3 : 2;
+
   return (
-    <ParticipantShell board={board}>
+    <ParticipantShell board={board} hero={step === "join" ? "full" : "compact"} progress={progress} participants={room.participant_count}>
       {!online && (
         <Banner icon={<IconWifiOff size={16} />} color="warning">{t("אין חיבור לרשת — התוכן יישמר ויישלח כשהחיבור יחזור")}</Banner>
       )}
@@ -247,27 +249,33 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 
 // ---- steps ------------------------------------------------------------------
 
-function JoinStep({ board, name, nameError, onName, onContinue, participants }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; participants: number }) {
+function JoinStep({ board, name, nameError, onName, onContinue }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; participants: number }) {
   const { t } = useI18n();
   const policy = board.participation.name_policy;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)" }}>{board.public_title}</h1>
-        {board.public_subtitle && <p style={{ fontSize: "var(--text-md)", color: "var(--text-muted)" }}>{board.public_subtitle}</p>}
-        {participants > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("{count} משתתפים כבר הצטרפו", { count: participants })}</p>}
+    <div className="ngg-fade-up" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 22, padding: 20, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("הצטרפות למפגש")}</div>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
+            {policy === "disabled" ? t("לחיצה אחת ואתם בפנים — התוכן שתשלחו יופיע על המסך המשותף.") : t("עוד רגע אתם בפנים — איך לקרוא לכם על המסך?")}
+          </p>
+        </div>
+        {policy !== "disabled" && (
+          <Input
+            label={policy === "required" ? t("השם שלכם") : t("השם שלכם (אופציונלי)")}
+            value={name}
+            onChange={(e) => onName(e.target.value)}
+            error={nameError}
+            placeholder={t("איך לקרוא לכם על המסך?")}
+            required={policy === "required"}
+          />
+        )}
+        <Button variant="primary" size="lg" block onClick={onContinue}>{t("המשך")}</Button>
+        {policy === "optional" && board.participation.anonymous_allowed && (
+          <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center" }}>{t("אפשר גם בלי שם — התוכן יוצג כאנונימי")}</p>
+        )}
       </div>
-      {policy !== "disabled" && (
-        <Input
-          label={policy === "required" ? t("השם שלכם") : t("השם שלכם (אופציונלי)")}
-          value={name}
-          onChange={(e) => onName(e.target.value)}
-          error={nameError}
-          placeholder={t("איך לקרוא לכם על המסך?")}
-          required={policy === "required"}
-        />
-      )}
-      <Button variant="primary" size="lg" block onClick={onContinue}>{t("המשך")}</Button>
     </div>
   );
 }
@@ -275,18 +283,20 @@ function JoinStep({ board, name, nameError, onName, onContinue, participants }: 
 function ZoneStep({ zones, onPick }: { zones: BoardZone[]; onPick: (id: string) => void }) {
   const { t } = useI18n();
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("לאיזה אזור לשלוח?")}</div>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("בחרו את האזור שאליו התוכן שלכם יופיע על המסך.")}</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="ngg-fade-up" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("לאיזה אזור לשלוח?")}</div>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("בחרו את האזור שאליו התוכן שלכם יופיע על המסך.")}</p>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {zones.map((z, i) => (
           <button
             key={z.id}
             onClick={() => onPick(z.id)}
-            className="ngg-card-hover"
-            style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", padding: "16px 18px", cursor: "pointer", textAlign: "start", minHeight: 72 }}
+            className="ngg-tile"
+            style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, padding: "16px 18px", cursor: "pointer", textAlign: "start", minHeight: 74 }}
           >
-            <span style={{ width: 40, height: 40, borderRadius: "var(--radius-lg)", background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "var(--weight-black)", fontSize: "var(--text-lg)", flex: "none" }}>{i + 1}</span>
+            <span style={{ width: 42, height: 42, borderRadius: 14, background: "var(--gradient-magenta)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "var(--weight-black)", fontSize: "var(--text-lg)", flex: "none", boxShadow: "0 4px 12px rgba(236,42,140,.30)" }}>{i + 1}</span>
             <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{z.title || t("אזור {num}", { num: i + 1 })}</span>
               {z.subtitle && <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>{z.subtitle}</span>}
@@ -314,18 +324,25 @@ function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void
 function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
   const { t } = useI18n();
   if (limitReached) {
-    return <StateCard icon={<IconCheck size={40} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
+    return <StateCard icon={<IconCheck size={34} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
   }
+  const options = [
+    canText && { key: "text", icon: <IconText size={22} />, title: t("תשובת טקסט"), desc: t("רעיון או תשובה קצרה"), tone: "ink" as const, onClick: onText },
+    canImage && { key: "image", icon: <IconImage size={22} />, title: t("תמונה"), desc: t("צילום או מהגלריה"), tone: "info" as const, onClick: onImage },
+    canGif && { key: "gif", icon: <IconSticker size={22} />, title: t("GIF ומדבקות"), desc: t("מספריית GIPHY"), tone: "magenta" as const, onClick: onGif },
+    canVideo && { key: "video", icon: <IconPlay size={22} />, title: t("סרטון YouTube"), desc: t("חיפוש או קישור"), tone: "danger" as const, onClick: onVideo },
+  ].filter(Boolean) as { key: string; icon: React.ReactNode; title: string; desc: string; tone: ChoiceTone; onClick: () => void }[];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="ngg-fade-up" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {zone && <ZoneBanner zone={zone} onChange={onChangeZone} />}
-      <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("מה תרצו לשלוח?")}</div>
-      {submittedCount > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("שלחתם {count} פריטים עד כה — אפשר להוסיף עוד.", { count: submittedCount })}</p>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {canText && <ChoiceCard icon={<IconText size={24} />} title={t("כתבו תשובה")} desc={t("שתפו רעיון או תשובה קצרה בטקסט")} onClick={onText} />}
-        {canImage && <ChoiceCard icon={<IconImage size={24} />} title={t("הוסיפו תמונה")} desc={t("צלמו או העלו תמונה מהגלריה")} onClick={onImage} />}
-        {canGif && <ChoiceCard icon={<IconSticker size={24} />} title={t("הוסיפו GIF או מדבקה")} desc={t("חפשו ושלחו GIF או מדבקה מספריית GIPHY")} onClick={onGif} />}
-        {canVideo && <ChoiceCard icon={<IconPlay size={24} />} title={t("הוסיפו סרטון YouTube")} desc={t("חפשו סרטון או הדביקו קישור — הוא יוצג על הלוח")} onClick={onVideo} />}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("מה תרצו לשלוח?")}</div>
+        {submittedCount > 0 && <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)" }}>{t("שלחתם {count} פריטים עד כה — אפשר להוסיף עוד.", { count: submittedCount })}</p>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+        {options.map(({ key, ...o }, i) => (
+          <ChoiceCard key={key} {...o} wide={options.length % 2 === 1 && i === options.length - 1} />
+        ))}
       </div>
     </div>
   );
@@ -585,15 +602,28 @@ function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack }
 function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: boolean; allowMore: boolean; onAnother: () => void; publicId: string }) {
   const { t } = useI18n();
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center", paddingTop: 20 }}>
-      <div style={{ width: 72, height: 72, borderRadius: "50%", background: approval ? "var(--warning-bg)" : "var(--success-bg)", color: approval ? "var(--warning)" : "var(--success)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {approval ? <IconClock size={34} /> : <IconCheck size={34} />}
+    <div className="ngg-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center", padding: "36px 24px", marginTop: 10 }}>
+      <div
+        className="ngg-pop"
+        style={{
+          width: 84,
+          height: 84,
+          borderRadius: "50%",
+          background: approval ? "var(--warning-bg)" : "var(--gradient-magenta)",
+          color: approval ? "var(--warning)" : "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: approval ? "none" : "0 12px 32px rgba(236,42,140,.35)",
+        }}
+      >
+        {approval ? <IconClock size={38} /> : <IconCheck size={38} />}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <h2 style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-extrabold)" }}>
           {approval ? t("התוכן נשלח וממתין לאישור המנחה") : t("התוכן שלכם עלה על הלוח!")}
         </h2>
-        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320 }}>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>
           {approval ? t("ברגע שהמנחה יאשר, התוכן יופיע על המסך המשותף.") : t("אפשר לראות אותו כעת על המסך המשותף.")}
         </p>
       </div>
@@ -609,16 +639,86 @@ function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: bool
 
 // ---- shell + shared bits ----------------------------------------------------
 
-function ParticipantShell({ board, children }: { board: Board | null; children: React.ReactNode }) {
+/**
+ * Mobile participant chrome: a dark brand hero (board identity + a 3-step
+ * progress rail) over a soft content area. `hero="full"` is the welcoming
+ * join screen; every later step collapses it to a compact bar so the content
+ * keeps the screen. Purely presentational — flow logic lives in the steps.
+ */
+function ParticipantShell({ board, children, hero = "compact", progress = null, participants = 0 }: { board: Board | null; children: React.ReactNode; hero?: "full" | "compact"; progress?: number | null; participants?: number }) {
+  const { t } = useI18n();
+  const full = hero === "full" && !!board;
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
-      <header style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
-        <Image src="/brand/ngg-logo.png" alt="NGG" width={64} height={22} style={{ height: 22, width: "auto" }} />
-        <span style={{ position: "absolute", insetInlineEnd: 16, top: "50%", transform: "translateY(-50%)" }}>
-          <LanguageToggle />
-        </span>
+      <header
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          background: "var(--gradient-ink-magenta)",
+          color: "#fff",
+          borderRadius: "0 0 26px 26px",
+          padding: `calc(12px + env(safe-area-inset-top)) 20px ${full ? 26 : 14}px`,
+        }}
+      >
+        <div aria-hidden style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 18% -40%, rgba(236,42,140,.38), transparent 58%)", pointerEvents: "none" }} />
+        <div style={{ position: "relative", width: "100%", maxWidth: 480, margin: "0 auto", display: "flex", flexDirection: "column", gap: full ? 16 : 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Image src="/brand/ngg-mark.png" alt="NGG" width={26} height={22} style={{ height: 22, width: "auto" }} />
+              <span style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", letterSpacing: "0.08em", color: "rgba(255,255,255,.65)" }}>NGG BOARDS</span>
+            </span>
+            <LanguageToggle onDark />
+          </div>
+
+          {board && (
+            <div style={{ display: "flex", flexDirection: "column", gap: full ? 8 : 2 }}>
+              <h1
+                style={{
+                  fontSize: full ? "var(--text-2xl)" : "var(--text-md)",
+                  fontWeight: "var(--weight-black)",
+                  lineHeight: "var(--leading-tight)",
+                  color: "#fff",
+                  ...(full ? {} : { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }),
+                }}
+              >
+                {board.public_title}
+              </h1>
+              {full && board.public_subtitle && (
+                <p style={{ fontSize: "var(--text-sm)", color: "rgba(255,255,255,.72)", lineHeight: "var(--leading-relaxed)" }}>{board.public_subtitle}</p>
+              )}
+              {full && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.18)", borderRadius: "var(--radius-pill)", padding: "5px 12px", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
+                    <span className="ngg-pulse-dot-light" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--magenta-neon)", flex: "none" }} />
+                    {t("בשידור חי")}
+                  </span>
+                  {participants > 0 && (
+                    <span style={{ display: "inline-flex", alignItems: "center", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.18)", borderRadius: "var(--radius-pill)", padding: "5px 12px", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
+                      {t("{count} משתתפים", { count: participants })}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {progress !== null && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", gap: 5, flex: 1 }} role="progressbar" aria-valuemin={1} aria-valuemax={3} aria-valuenow={Math.min(progress + 1, 3)}>
+                {[0, 1, 2].map((i) => (
+                  <span key={i} style={{ height: 4, flex: 1, borderRadius: "var(--radius-pill)", background: i <= progress ? "var(--gradient-magenta)" : "rgba(255,255,255,.18)", transition: "background var(--dur) var(--ease-standard)" }} />
+                ))}
+              </div>
+              {progress < 3 && (
+                <span style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-semibold)", color: "rgba(255,255,255,.6)", flex: "none" }}>
+                  {t("שלב {num} מתוך 3", { num: Math.min(progress + 1, 3) })}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </header>
-      <main style={{ flex: 1, width: "100%", maxWidth: 480, margin: "0 auto", padding: "20px 18px 32px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <main style={{ flex: 1, width: "100%", maxWidth: 480, margin: "0 auto", padding: "18px 18px calc(28px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 14 }}>
         {children}
       </main>
     </div>
@@ -631,25 +731,48 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function StateCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, padding: "48px 12px" }}>
-      <div style={{ color: "var(--text-subtle)" }}>{icon}</div>
+    <div className="ngg-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, padding: "40px 24px", marginTop: 10 }}>
+      <div style={{ width: 64, height: 64, borderRadius: 20, background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-extrabold)" }}>{title}</h2>
-      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320 }}>{description}</p>
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>{description}</p>
     </div>
   );
 }
 
-function ChoiceCard({ icon, title, desc, onClick }: { icon: React.ReactNode; title: string; desc: string; onClick: () => void }) {
+type ChoiceTone = "ink" | "info" | "magenta" | "danger";
+
+const CHOICE_TONES: Record<ChoiceTone, { bg: string; fg: string }> = {
+  ink: { bg: "var(--neutral-100)", fg: "var(--ink-600)" },
+  info: { bg: "var(--info-50)", fg: "var(--info-600)" },
+  magenta: { bg: "var(--magenta-50)", fg: "var(--magenta-600)" },
+  danger: { bg: "var(--danger-50)", fg: "var(--danger-600)" },
+};
+
+function ChoiceCard({ icon, title, desc, tone, onClick, wide }: { icon: React.ReactNode; title: string; desc: string; tone: ChoiceTone; onClick: () => void; wide?: boolean }) {
+  const c = CHOICE_TONES[tone];
   return (
     <button
       onClick={onClick}
-      className="ngg-card-hover"
-      style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", padding: "16px 18px", cursor: "pointer", textAlign: "start", minHeight: 72 }}
+      className="ngg-tile"
+      style={{
+        display: "flex",
+        flexDirection: wide ? "row" : "column",
+        alignItems: wide ? "center" : "flex-start",
+        gap: wide ? 14 : 12,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 20,
+        padding: 16,
+        cursor: "pointer",
+        textAlign: "start",
+        minHeight: wide ? 76 : 124,
+        gridColumn: wide ? "1 / -1" : undefined,
+      }}
     >
-      <span style={{ width: 46, height: 46, borderRadius: "var(--radius-lg)", background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{icon}</span>
-      <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-bold)" }}>{title}</span>
-        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)" }}>{desc}</span>
+      <span style={{ width: 44, height: 44, borderRadius: 14, background: c.bg, color: c.fg, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{icon}</span>
+      <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+        <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-extrabold)" }}>{title}</span>
+        <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{desc}</span>
       </span>
     </button>
   );
@@ -658,7 +781,7 @@ function ChoiceCard({ icon, title, desc, onClick }: { icon: React.ReactNode; tit
 function BackLink({ onClick }: { onClick: () => void }) {
   const { t } = useI18n();
   return (
-    <button onClick={onClick} style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: 0 }}>
+    <button onClick={onClick} className="ngg-tile" style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)", fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", cursor: "pointer", padding: "7px 14px 7px 16px", borderRadius: "var(--radius-pill)" }}>
       {t("← חזרה")}
     </button>
   );
@@ -666,17 +789,17 @@ function BackLink({ onClick }: { onClick: () => void }) {
 
 function StickyAction({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ position: "sticky", bottom: 0, paddingTop: 12, paddingBottom: 4, background: "linear-gradient(to top, var(--surface-sunken) 70%, transparent)" }}>
+    <div style={{ position: "sticky", bottom: 0, paddingTop: 14, paddingBottom: "calc(6px + env(safe-area-inset-bottom))", background: "linear-gradient(to top, var(--surface-sunken) 72%, transparent)" }}>
       {children}
     </div>
   );
 }
 
 function Banner({ icon, color, children }: { icon: React.ReactNode; color: "warning" | "info"; children: React.ReactNode }) {
-  const c = color === "warning" ? { border: "var(--warning)", bg: "var(--warning-bg)", color: "var(--warning)" } : { border: "var(--info)", bg: "var(--info-bg)", color: "var(--info)" };
+  const c = color === "warning" ? { bg: "var(--warning-bg)", color: "var(--warning)" } : { bg: "var(--info-bg)", color: "var(--info)" };
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid ${c.border}`, borderRadius: "var(--radius-lg)", padding: "10px 12px", fontSize: "var(--text-xs)", color: c.color, fontWeight: "var(--weight-semibold)" }}>
-      {icon}
+    <div className="ngg-fade-up" style={{ display: "flex", alignItems: "center", gap: 10, background: c.bg, border: `1px solid color-mix(in srgb, ${c.color} 35%, transparent)`, borderRadius: "var(--radius-pill)", padding: "9px 14px", fontSize: "var(--text-xs)", color: c.color, fontWeight: "var(--weight-semibold)" }}>
+      <span style={{ flex: "none", display: "flex" }}>{icon}</span>
       <span>{children}</span>
     </div>
   );
