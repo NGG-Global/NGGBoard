@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import type { Board, BackgroundTheme, BoardZone, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
+import type { Board, BackgroundTexture, BackgroundTheme, BoardZone, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
 import { db } from "@/lib/data";
-import { THEME_VISUALS } from "@/lib/board-visuals";
+import { BACKGROUND_TEXTURES, THEME_VISUALS, themeVisual } from "@/lib/board-visuals";
 import { boardFormSchema } from "@/lib/validation";
-import { Button, Input, Radio, Switch, useToast } from "@/components/ui";
+import { Button, ColorWheel, Input, Radio, Switch, useToast } from "@/components/ui";
 import { IconChevron } from "@/components/ui/icons";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { useI18n } from "@/lib/i18n/react";
@@ -54,6 +54,7 @@ function blankDraft(): Draft {
     appearance: {
       background_theme: "soft" as BackgroundTheme,
       background_color: null,
+      background_texture: "none" as const,
       background_image_url: null,
       client_logo_url: null,
       show_org_logo: true,
@@ -176,7 +177,9 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       .join(" · ") || t("ללא");
     return {
       s1: draft.public_title || t("עדיין ללא כותרת"),
-      s2: t(THEME_VISUALS[draft.appearance.background_theme].label),
+      s2:
+        (draft.appearance.background_color ? t("צבע מותאם אישית") : t(THEME_VISUALS[draft.appearance.background_theme].label)) +
+        ((draft.appearance.background_texture ?? "none") !== "none" ? ` · ${t(BACKGROUND_TEXTURES[draft.appearance.background_texture].label)}` : ""),
       s3: perms,
       s4: draft.moderation.mode === "approval" ? t("אישור לפני הצגה") : t("הצגה מיידית"),
       s5: t(SHARE_LABELS[draft.sharing]),
@@ -267,6 +270,64 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
                 ))}
               </div>
             </div>
+
+            {/* Free color via a hue wheel — overrides the preset when set. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("צבע חופשי — גלגל צבעים")}</div>
+              <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+                <ColorWheel value={draft.appearance.background_color} onChange={(hex) => patchAppearance({ background_color: hex })} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minWidth: 150 }}>
+                  {draft.appearance.background_color ? (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span aria-hidden style={{ width: 26, height: 26, borderRadius: 8, background: draft.appearance.background_color, border: "1px solid var(--border-strong)", flex: "none" }} />
+                        <span dir="ltr" style={{ fontSize: "var(--text-2xs)", color: "var(--text-muted)", fontWeight: "var(--weight-semibold)" }}>{draft.appearance.background_color}</span>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => patchAppearance({ background_color: null })}>{t("חזרה לערכת הנושא")}</Button>
+                    </>
+                  ) : (
+                    <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", lineHeight: "var(--leading-relaxed)", maxWidth: 200 }}>
+                      {t("גררו על הגלגל לבחירת גוון חופשי — הצבע יחליף את ערכת הרקע, וצבע הטקסט יותאם אוטומטית.")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Background texture, previewed over the currently selected background. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("טקסטורת רקע")}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(Object.keys(BACKGROUND_TEXTURES) as BackgroundTexture[]).map((tex) => {
+                  const active = (draft.appearance.background_texture ?? "none") === tex;
+                  const preview = themeVisual({ ...draft.appearance, background_texture: tex });
+                  return (
+                    <button
+                      key={tex}
+                      onClick={() => patchAppearance({ background_texture: tex })}
+                      aria-pressed={active}
+                      style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
+                    >
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 58,
+                          height: 40,
+                          borderRadius: "var(--radius-lg)",
+                          border: `2px solid ${active ? "var(--magenta-500)" : "var(--border)"}`,
+                          background: preview.background,
+                          display: "block",
+                        }}
+                      />
+                      <span style={{ fontSize: "var(--text-2xs)", fontWeight: active ? "var(--weight-bold)" : "var(--weight-semibold)", color: active ? "var(--accent-text)" : "var(--text-subtle)" }}>
+                        {t(BACKGROUND_TEXTURES[tex].label)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("לוגו לקוח")}</div>
               <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoFile} style={{ display: "none" }} />

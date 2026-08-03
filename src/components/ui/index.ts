@@ -11,4 +11,5 @@ export { RovingMenu } from "./Menu";
 export { EmptyState } from "./EmptyState";
 export { Spinner, LiveDot } from "./Spinner";
 export { QRCodeCanvas } from "./QRCode";
+export { ColorWheel } from "./ColorWheel";
 export * from "./icons";
