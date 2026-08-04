@@ -10,6 +10,7 @@ import type {
   LiveRoom,
   ModerationActionType,
   ParticipantSession,
+  RoomMode,
   RoomStatus,
   SessionSummary,
   Submission,
@@ -19,6 +20,7 @@ import type {
 import { INACTIVITY_SUSPEND_MS } from "@/lib/constants";
 import { formatRoomCode, generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
 import { normalizeBoard } from "@/lib/board-visuals";
+import { accruesIdleTime, dueRoomStatus, isOpenRoom, normalizeRoom } from "@/lib/rooms";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import { buildSeed, CURRENT_USER_ID, type Database } from "./seed";
 
@@ -346,46 +348,64 @@ class LocalDB {
   // ---- rooms ----------------------------------------------------------------
 
   getRoom(id: string): LiveRoom | null {
-    return this.read().rooms.find((r) => r.id === id) ?? null;
+    const room = this.read().rooms.find((r) => r.id === id);
+    return room ? normalizeRoom(room) : null;
   }
 
   getRoomByPublicId(publicId: string): LiveRoom | null {
-    return this.read().rooms.find((r) => r.public_id === publicId) ?? null;
+    const room = this.read().rooms.find((r) => r.public_id === publicId);
+    return room ? normalizeRoom(room) : null;
   }
 
   findRoomByCode(code: string): LiveRoom | null {
     const clean = code.replace(/\s/g, "");
-    return (
+    const room =
       this.read()
         .rooms.filter((r) => r.room_code === clean)
         // Prefer a still-joinable room if codes ever collide across history.
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null
-    );
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null;
+    return room ? normalizeRoom(room) : null;
   }
 
   listRoomsForBoard(boardId: string): LiveRoom[] {
     return this.read()
       .rooms.filter((r) => r.board_id === boardId)
+      .map(normalizeRoom)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   getActiveRoomForBoard(boardId: string): LiveRoom | null {
     return (
-      this.read().rooms.find(
-        (r) => r.board_id === boardId && ["active", "paused", "read_only", "suspended"].includes(r.status),
-      ) ?? null
+      this.read()
+        .rooms.filter((r) => r.board_id === boardId && ["active", "paused", "read_only", "suspended"].includes(r.status))
+        .map(normalizeRoom)[0] ?? null
     );
   }
 
+  /** The board's current open collection window, if one is running. */
+  getOpenRoomForBoard(boardId: string): LiveRoom | null {
+    const room = this.getActiveRoomForBoard(boardId);
+    return room && isOpenRoom(room) ? room : null;
+  }
+
   listActiveRooms(): LiveRoom[] {
-    return this.read().rooms.filter((r) =>
-      ["active", "paused", "read_only", "suspended"].includes(r.status),
-    );
+    return this.read()
+      .rooms.filter((r) => ["active", "paused", "read_only", "suspended"].includes(r.status))
+      .map(normalizeRoom);
   }
 
   activateRoom(
     boardId: string,
-    opts: { sessionLabel?: string; mode?: "fresh" | "continue"; facilitatorId?: string } = {},
+    opts: {
+      sessionLabel?: string;
+      /** Whether to carry the previous session's content into the new room. */
+      content?: "fresh" | "continue";
+      /** Live session (default) or an open collection window. */
+      mode?: RoomMode;
+      /** Open rooms: when collection stops accepting. */
+      closesAt?: string | null;
+      facilitatorId?: string;
+    } = {},
   ): LiveRoom {
     const db = this.read();
     const board = this.getBoard(boardId);
@@ -399,6 +419,8 @@ class LocalDB {
       public_id: `r-${randomId(10)}`,
       room_code: code,
       session_label: opts.sessionLabel?.trim() || null,
+      mode: opts.mode ?? "live",
+      closes_at: opts.mode === "open" ? opts.closesAt ?? null : null,
       status: "active",
       layout: board.default_layout,
       focused_submission_id: null,
@@ -414,7 +436,7 @@ class LocalDB {
     db.rooms.unshift(room);
 
     // "Continue" carries forward the most recent prior session's submissions.
-    if (opts.mode === "continue") {
+    if (opts.content === "continue") {
       const prior = this.listRoomsForBoard(boardId).find((r) => r.id !== room.id && r.status === "ended");
       if (prior) {
         const carried = db.submissions
@@ -434,7 +456,7 @@ class LocalDB {
     const db = this.read();
     const idx = db.rooms.findIndex((r) => r.id === id);
     if (idx === -1) throw new Error(`room ${id} not found`);
-    const next = { ...db.rooms[idx]!, ...patch };
+    const next = normalizeRoom({ ...db.rooms[idx]!, ...patch });
     db.rooms[idx] = next;
     this.commit({ kind: signal, roomId: id });
     // A room's status change flips its "active now" membership, which the
@@ -490,20 +512,42 @@ class LocalDB {
   }
 
   /**
-   * Server-timestamp-based inactivity check. Callable from any tab (or a cron/
-   * edge function once on Supabase). Suspends an active room after 30 minutes
-   * without meaningful activity. Returns the (possibly updated) room.
+   * Server-timestamp-based lifecycle check. Callable from any tab (or a cron /
+   * edge function once on Supabase). Returns the (possibly updated) room.
+   *
+   * Live sessions suspend after 30 minutes without meaningful activity. Open
+   * collections never do — quiet stretches are normal for them — and instead
+   * fall to read-only once their deadline passes.
    */
   checkAndApplyInactivity(id: string, nowMs = Date.now()): LiveRoom | null {
     const room = this.getRoom(id);
     if (!room) return null;
-    if (room.status !== "active" && room.status !== "paused") return room;
+    const due = dueRoomStatus(room, nowMs);
+    if (due) {
+      this.logActivity(id, "collection_closed", null, false);
+      return this.setRoomStatus(id, due);
+    }
+    if (!accruesIdleTime(room)) return room;
     const idle = nowMs - new Date(room.last_activity_at).getTime();
     if (idle >= INACTIVITY_SUSPEND_MS) {
       this.logActivity(id, "room_suspended", null, false);
       return this.setRoomStatus(id, "suspended");
     }
     return room;
+  }
+
+  /** Change an open collection's deadline (or clear it with null). */
+  setCollectionDeadline(id: string, closesAt: string | null): LiveRoom {
+    const room = this.getRoom(id);
+    if (!room) throw new Error(`room ${id} not found`);
+    const patch: Partial<LiveRoom> = { closes_at: closesAt };
+    // Extending the deadline on an already-closed collection reopens it —
+    // otherwise the facilitator changes the date and nothing happens.
+    if (room.status === "read_only" && closesAt && new Date(closesAt).getTime() > Date.now()) {
+      patch.status = "active";
+      patch.last_activity_at = new Date().toISOString();
+    }
+    return this.patchRoom(id, patch, "room");
   }
 
   // ---- participants ---------------------------------------------------------

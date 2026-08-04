@@ -26,6 +26,7 @@ const DEFAULT_MODERATION: Board["moderation"] = {
 export function normalizeBoard(board: Board): Board {
   return {
     ...board,
+    instructions: board.instructions ?? "",
     appearance: { ...DEFAULT_APPEARANCE, ...(board.appearance ?? {}) },
     participation: { ...DEFAULT_PARTICIPATION, ...(board.participation ?? {}) },
     moderation: { ...DEFAULT_MODERATION, ...(board.moderation ?? {}) },

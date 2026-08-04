@@ -11,6 +11,7 @@ import type {
   ModerationActionType,
   ParticipantSession,
   Profile,
+  RoomMode,
   RoomStatus,
   SessionSummary,
   Submission,
@@ -21,6 +22,7 @@ import { INACTIVITY_SUSPEND_MS, DEFAULT_IMAGE_SIZE_LIMIT_MB, DEFAULT_TEXT_CHAR_L
 import { generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabase";
 import { normalizeBoard } from "@/lib/board-visuals";
+import { accruesIdleTime, dueRoomStatus, isOpenRoom, normalizeRoom } from "@/lib/rooms";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import type { Database } from "./seed";
 
@@ -100,7 +102,7 @@ class SupabaseDB {
     if (orgs) this.cache.organizations = orgs as Database["organizations"];
     if (boards) this.cache.boards = (boards as Board[]).map(normalizeBoard);
     if (folders) this.cache.folders = folders as Folder[];
-    if (rooms) for (const r of rooms as LiveRoom[]) this.upsert(this.cache.rooms, r);
+    if (rooms) for (const r of rooms as LiveRoom[]) this.upsertRoom(r);
     this.emit("board-list");
     this.subscribeBoardList();
   }
@@ -116,7 +118,7 @@ class SupabaseDB {
       .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms" }, (p) => {
         const row = (p.new && (p.new as LiveRoom).id ? p.new : p.old) as LiveRoom | undefined;
         if (p.eventType === "DELETE" && row) this.cache.rooms = this.cache.rooms.filter((r) => r.id !== row.id);
-        else if (row?.id) this.upsert(this.cache.rooms, row);
+        else if (row?.id) this.upsertRoom(row);
         this.emit("board-list");
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "boards" }, (p) => {
@@ -202,7 +204,7 @@ class SupabaseDB {
   }
 
   private async loadRoomGraph(room: LiveRoom) {
-    this.upsert(this.cache.rooms, room);
+    this.upsertRoom(room);
     const sb = getSupabase();
     if (sb && !this.cache.boards.some((b) => b.id === room.board_id)) {
       const { data: board } = await sb.from("boards").select("*").eq("id", room.board_id).maybeSingle();
@@ -235,6 +237,7 @@ class SupabaseDB {
       internal_name: v.public_title,
       public_title: v.public_title,
       public_subtitle: v.public_subtitle ?? "",
+      instructions: v.instructions ?? "",
       internal_description: "",
       status: "ready",
       appearance: v.appearance,
@@ -263,6 +266,8 @@ class SupabaseDB {
       public_id: v.public_id,
       room_code: v.room_code,
       session_label: v.session_label,
+      mode: v.mode ?? "live",
+      closes_at: v.closes_at ?? null,
       status: v.status,
       layout: v.layout,
       focused_submission_id: v.focused_submission_id,
@@ -288,7 +293,7 @@ class SupabaseDB {
         void this.loadSubmissions(roomId, true);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `id=eq.${roomId}` }, (p) => {
-        if (p.new) this.upsert(this.cache.rooms, p.new as LiveRoom);
+        if (p.new) this.upsertRoom(p.new as LiveRoom);
         this.signalRoom("room", roomId);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "participant_sessions", filter: `room_id=eq.${roomId}` }, () => {
@@ -322,6 +327,14 @@ class SupabaseDB {
     const i = arr.findIndex((x) => x.id === row.id);
     if (i === -1) arr.push(row);
     else arr[i] = { ...arr[i], ...row };
+  }
+  /**
+   * Single entry point for room rows into the cache. Rows written before open
+   * collection existed carry no `mode`/`closes_at`; normalising here means every
+   * read path gets a complete room without each one remembering to do it.
+   */
+  private upsertRoom(row: LiveRoom) {
+    this.upsert(this.cache.rooms, normalizeRoom(row));
   }
 
   // ---- org / profiles -------------------------------------------------------
@@ -456,6 +469,7 @@ class SupabaseDB {
       internal_name: input.internal_name ?? "",
       public_title: input.public_title ?? "",
       public_subtitle: input.public_subtitle ?? "",
+      instructions: input.instructions ?? "",
       internal_description: input.internal_description ?? "",
       status: input.status ?? "draft",
       appearance: { ...defaultAppearance(), ...(input.appearance ?? {}) },
@@ -556,12 +570,17 @@ class SupabaseDB {
     if (!sb) return;
     const { data } = await sb.from("live_rooms").select("*").eq("board_id", boardId);
     if (data) {
-      for (const r of data as LiveRoom[]) this.upsert(this.cache.rooms, r);
+      for (const r of data as LiveRoom[]) this.upsertRoom(r);
       this.emit("board-list");
     }
   }
   getActiveRoomForBoard(boardId: string): LiveRoom | null {
     return this.cache.rooms.find((r) => r.board_id === boardId && ACTIVE_STATES.includes(r.status)) ?? null;
+  }
+  /** The board's current open collection window, if one is running. */
+  getOpenRoomForBoard(boardId: string): LiveRoom | null {
+    const room = this.getActiveRoomForBoard(boardId);
+    return room && isOpenRoom(room) ? room : null;
   }
   listActiveRooms(): LiveRoom[] {
     void this.hydrateActiveRooms();
@@ -574,12 +593,15 @@ class SupabaseDB {
     this.activeHydrated = true;
     const { data } = await sb.from("live_rooms").select("*").in("status", ACTIVE_STATES);
     if (data) {
-      for (const r of data as LiveRoom[]) this.upsert(this.cache.rooms, r);
+      for (const r of data as LiveRoom[]) this.upsertRoom(r);
       this.emit("board-list");
     }
   }
 
-  activateRoom(boardId: string, opts: { sessionLabel?: string; mode?: "fresh" | "continue" } = {}): LiveRoom {
+  activateRoom(
+    boardId: string,
+    opts: { sessionLabel?: string; content?: "fresh" | "continue"; mode?: RoomMode; closesAt?: string | null } = {},
+  ): LiveRoom {
     const board = this.getBoard(boardId);
     const nowIso = new Date().toISOString();
     const room: LiveRoom = {
@@ -589,6 +611,8 @@ class SupabaseDB {
       public_id: `r-${randomId(10)}`,
       room_code: generateRoomCode(),
       session_label: opts.sessionLabel?.trim() || null,
+      mode: opts.mode ?? "live",
+      closes_at: opts.mode === "open" ? opts.closesAt ?? null : null,
       status: "active",
       layout: board?.default_layout ?? "wall",
       focused_submission_id: null,
@@ -640,11 +664,31 @@ class SupabaseDB {
   setFocus(id: string, submissionId: string | null) { return this.patchRoom(id, { focused_submission_id: submissionId }, "focus"); }
   setQrOverlay(id: string, visible: boolean) { return this.patchRoom(id, { qr_overlay_visible: visible }, "qr-overlay"); }
 
+  /**
+   * Live sessions suspend after 30 idle minutes; open collections never do and
+   * instead fall to read-only at their deadline. Mirrors LocalDB and the
+   * server-side `suspend_inactive_rooms()` sweep.
+   */
   checkAndApplyInactivity(id: string, nowMs = Date.now()): LiveRoom | null {
     const room = this.getRoom(id);
-    if (!room || (room.status !== "active" && room.status !== "paused")) return room;
+    if (!room) return null;
+    const due = dueRoomStatus(room, nowMs);
+    if (due) return this.setRoomStatus(id, due);
+    if (!accruesIdleTime(room)) return room;
     if (nowMs - new Date(room.last_activity_at).getTime() >= INACTIVITY_SUSPEND_MS) return this.setRoomStatus(id, "suspended");
     return room;
+  }
+
+  /** Change an open collection's deadline (or clear it with null). */
+  setCollectionDeadline(id: string, closesAt: string | null): LiveRoom {
+    const room = this.getRoom(id);
+    const patch: Partial<LiveRoom> = { closes_at: closesAt };
+    // Extending the deadline on an already-closed collection reopens it.
+    if (room?.status === "read_only" && closesAt && new Date(closesAt).getTime() > Date.now()) {
+      patch.status = "active";
+      patch.last_activity_at = new Date().toISOString();
+    }
+    return this.patchRoom(id, patch, "room");
   }
 
   // ---- participants (anon RPC + client id) ----------------------------------
@@ -854,6 +898,9 @@ interface PublicViewRow {
   public_id: string;
   room_code: string;
   status: RoomStatus;
+  /** Open collection fields — present once migration 0010 is applied. */
+  mode?: RoomMode | null;
+  closes_at?: string | null;
   layout: DisplayLayout;
   focused_submission_id: string | null;
   qr_overlay_visible: boolean;
@@ -861,6 +908,7 @@ interface PublicViewRow {
   session_label: string | null;
   public_title: string;
   public_subtitle: string | null;
+  instructions?: string | null;
   appearance: Board["appearance"];
   participation: Partial<Board["participation"]>;
   zones: Board["zones"] | null;

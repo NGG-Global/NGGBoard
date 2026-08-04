@@ -171,6 +171,15 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
         )}
       </header>
 
+      {/* The facilitator's brief, pinned above the content for a guest. On the
+          projector it would compete with the board itself, so it stays here. */}
+      {viewer && board.instructions?.trim() && (
+        <div style={{ background: v.dark ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.72)", border: `1px solid ${v.dark ? "rgba(255,255,255,.16)" : "rgba(8,8,16,.08)"}`, borderRadius: "var(--radius-xl)", padding: "13px 15px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: subColor, letterSpacing: ".02em" }}>{t("ההנחיות")}</div>
+          <p style={{ fontSize: "var(--text-sm)", color: textColor, lineHeight: "var(--leading-relaxed)", whiteSpace: "pre-line" }}>{board.instructions.trim()}</p>
+        </div>
+      )}
+
       {/* A guest can't be handed a full-screen takeover — it would hide the very
           content they opened the board to read — so the room's state is a strip. */}
       {viewer && (overlay || room.status === "ended") && (

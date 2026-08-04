@@ -4,9 +4,24 @@ import { INACTIVITY_SUSPEND_MS } from "@/lib/constants";
 import { boardFormSchema, validateSubmissionText } from "@/lib/validation";
 import { isAllowedImageType, sanitizeText } from "@/lib/utils";
 
+const DAY = 24 * 60 * 60 * 1000;
+
 beforeEach(() => {
   db.resetToSeed();
 });
+
+/**
+ * Push a room's `last_activity_at` into the past. Written through storage and
+ * followed by a cache drop so the value is read back the way the real
+ * timestamp-based check reads it, rather than from a mutated in-memory object.
+ */
+function rewindActivity(roomId: string, iso: string) {
+  const stored = JSON.parse(localStorage.getItem("ngg_boards_db_v1")!);
+  const idx = stored.rooms.findIndex((r: { id: string }) => r.id === roomId);
+  stored.rooms[idx].last_activity_at = iso;
+  localStorage.setItem("ngg_boards_db_v1", JSON.stringify(stored));
+  db.resetMemoryForTest();
+}
 
 describe("board creation and validation", () => {
   it("rejects a board without a public title", () => {
@@ -52,7 +67,7 @@ describe("room activation", () => {
   });
 
   it("carries submissions forward only when continuing a session", () => {
-    const room = db.activateRoom("board_qa", { mode: "continue" });
+    const room = db.activateRoom("board_qa", { content: "continue" });
     // board_qa has a prior ended room (room_past) with no submissions in seed,
     // so continue yields an empty room here — but the code path must not throw.
     expect(room.status).toBe("active");
@@ -132,12 +147,7 @@ describe("submission moderation lifecycle", () => {
 describe("inactivity lifecycle", () => {
   it("suspends an active room after 30 minutes without meaningful activity", () => {
     const room = db.activateRoom("board_qa");
-    // Force last_activity_at into the past via a fresh submission then rewind.
-    const stored = JSON.parse(localStorage.getItem("ngg_boards_db_v1")!);
-    const idx = stored.rooms.findIndex((r: { id: string }) => r.id === room.id);
-    stored.rooms[idx].last_activity_at = new Date(Date.now() - INACTIVITY_SUSPEND_MS - 1000).toISOString();
-    localStorage.setItem("ngg_boards_db_v1", JSON.stringify(stored));
-    db.resetMemoryForTest();
+    rewindActivity(room.id, new Date(Date.now() - INACTIVITY_SUSPEND_MS - 1000).toISOString());
 
     const after = db.checkAndApplyInactivity(room.id);
     expect(after?.status).toBe("suspended");
@@ -149,6 +159,77 @@ describe("inactivity lifecycle", () => {
     const reactivated = db.reactivateRoom(room.id);
     expect(reactivated.status).toBe("active");
     expect(Date.now() - new Date(reactivated.last_activity_at).getTime()).toBeLessThan(2000);
+  });
+
+  it("never suspends an open collection for inactivity", () => {
+    // The whole point of an open board: the link the facilitator sent out must
+    // still work after days of quiet.
+    const room = db.activateRoom("board_qa", { mode: "open" });
+    const stale = new Date(Date.now() - 40 * DAY).toISOString();
+    rewindActivity(room.id, stale);
+
+    const after = db.checkAndApplyInactivity(room.id);
+    expect(after?.status).toBe("active");
+  });
+
+  it("still suspends a live room that has been idle for the same span", () => {
+    // Guards the exemption above against being written too broadly.
+    const room = db.activateRoom("board_qa", { mode: "live" });
+    rewindActivity(room.id, new Date(Date.now() - 40 * DAY).toISOString());
+    expect(db.checkAndApplyInactivity(room.id)?.status).toBe("suspended");
+  });
+});
+
+describe("open collection lifecycle", () => {
+  it("records the mode and deadline on activation", () => {
+    const closesAt = new Date(Date.now() + 3 * DAY).toISOString();
+    const room = db.activateRoom("board_qa", { mode: "open", closesAt });
+    expect(room.mode).toBe("open");
+    expect(room.closes_at).toBe(closesAt);
+    expect(db.getOpenRoomForBoard("board_qa")?.id).toBe(room.id);
+  });
+
+  it("ignores a deadline passed for a live room", () => {
+    const room = db.activateRoom("board_qa", { mode: "live", closesAt: new Date().toISOString() });
+    expect(room.closes_at).toBeNull();
+  });
+
+  it("closes an open collection to read-only once its deadline passes", () => {
+    const room = db.activateRoom("board_qa", { mode: "open", closesAt: new Date(Date.now() + 60_000).toISOString() });
+    expect(db.checkAndApplyInactivity(room.id)?.status).toBe("active");
+    // One minute later the deadline has passed.
+    const after = db.checkAndApplyInactivity(room.id, Date.now() + 61_000);
+    expect(after?.status).toBe("read_only");
+    // Content survives closing — that is why it is read_only and not ended.
+    expect(db.getRoom(room.id)?.closes_at).toBeTruthy();
+  });
+
+  it("leaves an open collection with no deadline running indefinitely", () => {
+    const room = db.activateRoom("board_qa", { mode: "open" });
+    rewindActivity(room.id, new Date(Date.now() - 365 * DAY).toISOString());
+    expect(db.checkAndApplyInactivity(room.id, Date.now() + 365 * DAY)?.status).toBe("active");
+  });
+
+  it("reopens a closed collection when the deadline is extended", () => {
+    const room = db.activateRoom("board_qa", { mode: "open", closesAt: new Date(Date.now() - 1000).toISOString() });
+    expect(db.checkAndApplyInactivity(room.id)?.status).toBe("read_only");
+    const extended = db.setCollectionDeadline(room.id, new Date(Date.now() + 2 * DAY).toISOString());
+    expect(extended.status).toBe("active");
+  });
+
+  it("defaults rooms stored before open collection existed to live mode", () => {
+    // Legacy rows carry neither field; every one of them was a live session.
+    const room = db.activateRoom("board_qa");
+    const stored = JSON.parse(localStorage.getItem("ngg_boards_db_v1")!);
+    const idx = stored.rooms.findIndex((r: { id: string }) => r.id === room.id);
+    delete stored.rooms[idx].mode;
+    delete stored.rooms[idx].closes_at;
+    localStorage.setItem("ngg_boards_db_v1", JSON.stringify(stored));
+    db.resetMemoryForTest();
+
+    const loaded = db.getRoom(room.id);
+    expect(loaded?.mode).toBe("live");
+    expect(loaded?.closes_at).toBeNull();
   });
 });
 

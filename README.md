@@ -67,6 +67,8 @@ An authenticated employee can:
 10. ✅ Reactivate a suspended room without losing content
 11. ✅ Review previous sessions (session history + results)
 12. ✅ Export a visual record of the session (PNG)
+13. ✅ Open a board for **asynchronous collection** — one durable link,
+    pinned instructions, a deadline, and a review surface for what accumulates
 
 Plus: login, dashboard with all views/search/filters, board detail, org admin
 overview, template gallery placeholder, and intentional empty / loading /
@@ -123,6 +125,7 @@ src/lib/data/realtime.ts        ← BroadcastChannel realtime bus
 /display/[publicRoomId]            public projector display (fullscreen)
 /join                              enter room code
 /join/[publicRoomId]              participant join + submit (mobile-first)
+/join/[publicRoomId]/board        participant's scrollable read-only view of the board
 /results/[roomId]                  session results + PNG export
 ```
 
@@ -148,6 +151,9 @@ src/lib/data/realtime.ts        ← BroadcastChannel realtime bus
 >    email before first login (or enable auto-confirm under Auth → settings for
 >    smoother onboarding). This is why the authenticated facilitator flow can't
 >    be exercised headlessly and needs a real confirmed user.
+> 5. Run `supabase/migrations/0010_open_collection.sql` — **required for open
+>    collection boards**. Until it runs, `live_rooms.mode` doesn't exist, so the
+>    inactivity sweep suspends an open board 30 minutes after its link goes out.
 
 The app is architected so this is an isolated swap — screens don't change. The
 full step-by-step, for reference / a fresh project:
@@ -247,6 +253,60 @@ warning**; the server function is the authoritative 30-minute suspension.
 
 ---
 
+## Open collection boards (asynchronous)
+
+A board can be put to work in one of two modes, chosen in the activation dialog:
+
+- **מפגש חי** (`LiveRoom.mode = "live"`) — a facilitated session happening now.
+  Unchanged behaviour: 25-minute warning, 30-minute auto-suspend, projector
+  auto-cycling.
+- **לוח פתוח לאיסוף** (`mode = "open"`) — the facilitator publishes the link
+  once and participants contribute over days or weeks.
+
+**The consequential rule:** an open room is never suspended for inactivity.
+Days of quiet are its normal state, and a link that dies 30 minutes after being
+sent reads to a participant as a broken system. It closes at `closes_at`
+instead, or when the facilitator closes it. This is enforced in three places
+that must agree — `src/lib/rooms.ts` (`accruesIdleTime` / `dueRoomStatus`), both
+data backends' `checkAndApplyInactivity`, and `suspend_inactive_rooms()` in
+`supabase/migrations/0010_open_collection.sql`.
+
+Closing sends the room to **`read_only`**, not `ended`: collected content stays
+on the board for review and presentation, and the board keeps counting it as its
+current collection rather than dropping back to "no room yet". Ending it is a
+separate, deliberate act.
+
+- **`Board.instructions`** — the facilitator's multi-line brief, shown on the
+  participant's opening screen, on the returning-participant screen, and pinned
+  above the board in the guest view. Deliberately separate from
+  `public_subtitle`, which is a one-line strapline sized for the projector
+  header and cannot carry a brief. On an open board no facilitator is present to
+  explain the task, which makes this the participant's only context.
+- **Moderation defaults to approval** for open boards (nobody is watching content
+  arrive), which only protects anyone if the queue is impossible to miss — hence
+  the pending-count badge on the dashboard card and in the collection panel.
+- **The facilitator's surface** is `CollectionPanel` on the board detail page:
+  link + QR + code, copy and WhatsApp share, counts, pending queue, and deadline
+  editing. The live control room is deliberately not reused — it is a
+  projector-side cockpit for a room you are standing in front of.
+- **Participant-facing states** are stated in the participant's own terms:
+  "אפשר לשלוח עד <date>" while open, "האיסוף נסגר" afterwards (never a blank
+  error), and "הקישור נשאר פעיל" on the confirmation screen.
+- **Deadline enforcement is server-side too.** `create_submission` and
+  `join_room` both reject a past-deadline open room independently of the sweep
+  having run — a deadline enforced only in the browser is not enforced at all.
+- **Supabase:** run `supabase/migrations/0010_open_collection.sql` (after
+  `0009`). It adds `live_rooms.mode` / `live_rooms.closes_at` /
+  `boards.instructions`, rewrites the sweep and the two participant RPCs, and
+  re-creates `public_board_view` with the new fields.
+
+**Known limitation, stated plainly:** a returning participant is recognised by a
+`localStorage` key per browser (`ngg_participant_<publicId>`). Someone who
+switches from phone to laptop, or clears their browser, arrives as a new
+participant. Closing that properly means identifying people (an email or SMS
+code), which contradicts the no-login promise that makes the participant side
+work at all. The limitation is accepted rather than papered over.
+
 ## GIF & sticker submissions (Giphy)
 
 Participants can search and send GIFs / stickers from the Giphy library (a
@@ -323,6 +383,18 @@ watch URL.
 - [ ] Blocked from submitting to paused / suspended / ended rooms
 - [ ] Duplicate + rapid-submit protection
 - [ ] Multiple submissions vs single-submission limit
+- [ ] "צפייה בלוח המשותף" scrolls through every item on a phone; zoned boards
+      stack into sections; no horizontal overflow; the way back is one tap
+
+**Open collection board**
+- [ ] Activation dialog offers both modes with plain-language descriptions
+- [ ] An open room survives 30+ minutes (and days) of inactivity — the link keeps working
+- [ ] A live room on the same board still auto-suspends at 30 minutes
+- [ ] Instructions appear on the join screen AND for a returning participant
+- [ ] Deadline shown as a date; past it, participants see "האיסוף נסגר", not an error
+- [ ] Collection panel: copy link, QR, code, WhatsApp, counts, pending badge
+- [ ] Extending the deadline on a closed collection reopens it
+- [ ] Dashboard card shows "פתוח לאיסוף" plus the pending-approval count
 
 **Projector display**
 - [ ] Card wall / mosaic / live feed all readable from a distance
@@ -346,7 +418,9 @@ watch URL.
 `src/lib/data/local-db.test.ts`): board creation & validation, room activation,
 participant join, immediate vs approval publishing, approval flow, hide/restore
 + focus drop, **inactivity suspension**, reactivation, organization isolation,
-file-type validation, and text sanitisation.
+file-type validation, text sanitisation, and the open-collection lifecycle
+(inactivity exemption, deadline closing, deadline extension reopening, and
+legacy rooms normalising to live mode).
 
 ---
 

@@ -211,7 +211,7 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
                 {room.session_label ? `${room.session_label} · ` : ""}{t("החל לפני {minutes} דק׳", { minutes: elapsed })}
               </div>
             </div>
-            <RoomStatusBadge status={room.status} solid={liveNow} />
+            <RoomStatusBadge status={room.status} mode={room.mode} solid={liveNow} />
             <button onClick={() => setOpen(false)} className="ngg-hover" aria-label={t("סגור בקרה")} title={t("סגור פאנל")} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 6, borderRadius: "var(--radius-md)", color: "var(--text-muted)", display: "flex" }}>
               <IconX size={16} />
             </button>

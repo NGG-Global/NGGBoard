@@ -116,6 +116,16 @@ export interface Board {
   internal_name: string;
   public_title: string;
   public_subtitle: string;
+  /**
+   * The facilitator's brief to participants — several lines, shown on the
+   * participant's opening screen and pinned above the board.
+   *
+   * Distinct from `public_subtitle` on purpose: the subtitle is a one-line
+   * strapline rendered large in the projector header, so it can't carry a
+   * multi-paragraph brief. On an open board nobody is in the room to explain
+   * the task, which makes this the participant's only context.
+   */
+  instructions: string;
   internal_description: string;
   status: BoardStatus;
   appearance: BoardAppearance;
@@ -149,6 +159,19 @@ export type RoomStatus =
   | "ended"
   | "archived";
 
+/**
+ * How a room collects content.
+ *
+ * `live` — a facilitated session happening now. Auto-suspends after 30 minutes
+ *   without activity, because an abandoned live room shouldn't stay open.
+ * `open` — an ongoing collection window. The facilitator publishes the link once
+ *   and participants contribute over days or weeks, so inactivity must NOT
+ *   suspend it: a link that dies half an hour after it was sent reads to a
+ *   participant as a broken system. It closes on `closes_at`, or when the
+ *   facilitator closes it.
+ */
+export type RoomMode = "live" | "open";
+
 export interface LiveRoom {
   id: string;
   board_id: string;
@@ -158,6 +181,13 @@ export interface LiveRoom {
   /** Human-friendly numeric code, e.g. "739428". */
   room_code: string;
   session_label: string | null;
+  mode: RoomMode;
+  /**
+   * Open rooms: the moment collection stops accepting new content (null = no
+   * deadline, open until closed by hand). Enforced server-side as well as in
+   * the UI — a client-only deadline would be trivially bypassable.
+   */
+  closes_at: string | null;
   status: RoomStatus;
   layout: DisplayLayout;
   /** Currently focused submission shown large on the display. */
@@ -243,7 +273,9 @@ export type ActivityEventType =
   | "room_resumed"
   | "room_suspended"
   | "room_reactivated"
-  | "room_ended";
+  | "room_ended"
+  /** An open collection reached its deadline and stopped accepting content. */
+  | "collection_closed";
 
 export interface ActivityEvent {
   id: string;

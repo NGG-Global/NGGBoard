@@ -6,7 +6,7 @@ import type { Board, BackgroundTexture, BackgroundTheme, BoardZone, DisplayLayou
 import { db } from "@/lib/data";
 import { BACKGROUND_TEXTURES, THEME_VISUALS, themeVisual } from "@/lib/board-visuals";
 import { boardFormSchema } from "@/lib/validation";
-import { Button, ColorWheel, Input, Radio, Switch, useToast } from "@/components/ui";
+import { Button, ColorWheel, Input, Radio, Switch, Textarea, useToast } from "@/components/ui";
 import { IconChevron } from "@/components/ui/icons";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { useI18n } from "@/lib/i18n/react";
@@ -17,6 +17,7 @@ type Draft = {
   internal_name: string;
   public_title: string;
   public_subtitle: string;
+  instructions: string;
   internal_description: string;
   appearance: Board["appearance"];
   participation: Board["participation"];
@@ -34,6 +35,7 @@ function draftFromBoard(b: Board): Draft {
     internal_name: b.internal_name,
     public_title: b.public_title,
     public_subtitle: b.public_subtitle,
+    instructions: b.instructions ?? "",
     internal_description: b.internal_description,
     appearance: { ...b.appearance },
     participation: { ...b.participation },
@@ -80,6 +82,7 @@ function blankDraft(): Draft {
     internal_name: "",
     public_title: "",
     public_subtitle: "",
+    instructions: "",
     internal_description: "",
     appearance: { ...base.appearance, background_theme: "soft", client_logo_url: null },
     participation: { ...base.participation },
@@ -153,6 +156,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       internal_name: draft.internal_name || draft.public_title,
       public_title: draft.public_title.trim(),
       public_subtitle: draft.public_subtitle,
+      instructions: draft.instructions.trim(),
       internal_description: draft.internal_description,
       appearance: draft.appearance,
       participation: draft.participation,
@@ -243,6 +247,14 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
           <EditorSection index={1} title={t("פרטים בסיסיים")} summary={summaries.s1} open={openSec === 1} onToggle={() => setOpenSec(openSec === 1 ? 0 : 1)} error={!!titleError}>
             <Input label={t("כותרת ציבורית")} required value={draft.public_title} onChange={(e) => patch({ public_title: e.target.value })} error={titleError} hint={t("הכותרת שהמשתתפים והקהל יראו")} />
             <Input label={t("הנחיה למשתתפים")} value={draft.public_subtitle} onChange={(e) => patch({ public_subtitle: e.target.value })} hint={t("שאלה או משימה קצרה, למשל: מה לוקחים מהסדנה?")} />
+            <Textarea
+              label={t("הנחיות מפורטות (אופציונלי)")}
+              value={draft.instructions}
+              onChange={(e) => patch({ instructions: e.target.value.slice(0, 1200) })}
+              rows={5}
+              placeholder={t("מה אתם מבקשים מהמשתתפים, ולמה זה משמש")}
+              hint={t("מוצג למשתתף לפני השליחה ונעוץ בראש הלוח. חשוב במיוחד בלוח פתוח, שבו אין מנחה בחדר שיסביר.")}
+            />
             <Input label={t("שם פנימי")} value={draft.internal_name} onChange={(e) => patch({ internal_name: e.target.value })} hint={t("רק אתם רואים אותו — לזיהוי ברשימת הלוחות")} />
             <Input label={t("תיקייה / צוות")} value={draft.folder ?? ""} onChange={(e) => patch({ folder: e.target.value || null })} hint={t("לארגון הלוחות, למשל: סדנאות, אירועים")} />
           </EditorSection>
