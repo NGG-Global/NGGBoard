@@ -15,6 +15,7 @@ import type {
   RoomStatus,
   SessionSummary,
   Submission,
+  SubmissionComment,
   SubmissionStatus,
   SubmissionType,
 } from "@/lib/types";
@@ -23,6 +24,7 @@ import { generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabase";
 import { normalizeBoard } from "@/lib/board-visuals";
 import { accruesIdleTime, dueRoomStatus, isOpenRoom, normalizeRoom } from "@/lib/rooms";
+import { countsAsContribution, usableSeedPosts } from "@/lib/posts";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import type { Database } from "./seed";
 
@@ -36,6 +38,7 @@ const emptyDb = (): Database => ({
   participants: [],
   activity: [],
   moderation: [],
+  comments: [],
 });
 
 /**
@@ -247,6 +250,8 @@ class SupabaseDB {
       default_layout: v.layout,
       default_sort: "newest",
       zones: Array.isArray(v.zones) ? v.zones : [],
+      // A participant never authors seed posts; they arrive as ordinary rows.
+      seed_posts: [],
       tags: [],
       folder: null,
       collaborator_ids: [],
@@ -299,6 +304,9 @@ class SupabaseDB {
       .on("postgres_changes", { event: "*", schema: "public", table: "participant_sessions", filter: `room_id=eq.${roomId}` }, () => {
         void this.loadParticipants(roomId);
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "submission_comments", filter: `room_id=eq.${roomId}` }, () => {
+        void this.loadComments(roomId);
+      })
       .subscribe();
     this.channels.set(roomId, ch);
   }
@@ -318,6 +326,9 @@ class SupabaseDB {
         const { data } = await sb.from("public_board_view").select("*").eq("public_id", publicId).maybeSingle();
         if (data) this.absorbPublicView(data as PublicViewRow);
         this.signalRoom("room", room.id);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "submission_comments", filter: `room_id=eq.${room.id}` }, () => {
+        void this.loadComments(room.id);
       })
       .subscribe();
     this.channels.set(publicId, ch);
@@ -479,6 +490,7 @@ class SupabaseDB {
       default_layout: input.default_layout ?? "wall",
       default_sort: input.default_sort ?? "newest",
       zones: input.zones ?? [],
+      seed_posts: input.seed_posts ?? [],
       tags: input.tags ?? [],
       folder: input.folder ?? null,
       collaborator_ids: input.collaborator_ids ?? [],
@@ -598,6 +610,12 @@ class SupabaseDB {
     }
   }
 
+  /**
+   * NOTE: `opts.content === "continue"` is accepted for signature parity with
+   * LocalDB but is not implemented here — this backend does not copy a previous
+   * session's submissions into the new room. Pre-existing gap, called out so it
+   * isn't mistaken for working.
+   */
   activateRoom(
     boardId: string,
     opts: { sessionLabel?: string; content?: "fresh" | "continue"; mode?: RoomMode; closesAt?: string | null } = {},
@@ -633,8 +651,41 @@ class SupabaseDB {
     void sb?.from("live_rooms").insert(roomToRow(room)).then(({ error }) => {
       if (error) console.warn("activateRoom", error.message);
       else if (this.currentProfileId) void sb.from("room_facilitators").insert({ room_id: room.id, profile_id: this.currentProfileId });
+      // Only after the room row exists — the submissions reference it.
+      if (!error) this.materializeSeedPosts(room, board, nowIso);
     });
     return room;
+  }
+
+  /**
+   * Copy the board's opening content into a freshly activated room. Published
+   * outright: the facilitator's own guidance must not queue for her approval.
+   */
+  private materializeSeedPosts(room: LiveRoom, board: Board | null, nowIso: string) {
+    const seeds = usableSeedPosts(board?.seed_posts);
+    if (!seeds.length) return;
+    const authorId = this.currentProfileId;
+    const rows: Submission[] = seeds.map((seed) => ({
+      id: uuid(),
+      room_id: room.id,
+      organization_id: room.organization_id,
+      type: seed.type,
+      text_content: seed.text.trim() || null,
+      media_url: seed.media_url,
+      zone_id: seed.zone_id,
+      participant_session_id: null,
+      author_profile_id: authorId,
+      display_name: authorId ? this.getProfile(authorId)?.full_name ?? null : null,
+      anonymous: false,
+      status: "published",
+      pinned: seed.pinned,
+      created_at: nowIso,
+      updated_at: nowIso,
+    }));
+    this.cache.submissions.push(...rows);
+    this.signalRoom("submissions", room.id);
+    const sb = getSupabase();
+    void sb?.from("submissions").insert(rows).then(({ error }) => error && console.warn("materializeSeedPosts", error.message));
   }
 
   private patchRoom(id: string, patch: Partial<LiveRoom>, kind: RealtimeSignal["kind"]): LiveRoom {
@@ -743,11 +794,17 @@ class SupabaseDB {
     this.cache.submissions = this.cache.submissions.map((s) =>
       s.room_id === roomId && s.status !== "deleted" ? { ...s, status: "deleted" as const, updated_at: new Date().toISOString() } : s,
     );
+    this.cache.comments = this.cache.comments.map((c) =>
+      c.room_id === roomId && c.status !== "deleted" ? { ...c, status: "deleted" as const, updated_at: new Date().toISOString() } : c,
+    );
     this.setFocus(roomId, null);
     this.signalRoom("submissions", roomId);
+    this.signalRoom("comments", roomId);
     const sb = getSupabase();
     void sb?.from("submissions").update({ status: "deleted" }).eq("room_id", roomId).neq("status", "deleted")
       .then(({ error }) => error && console.warn("clearSubmissions", error.message));
+    void sb?.from("submission_comments").update({ status: "deleted" }).eq("room_id", roomId).neq("status", "deleted")
+      .then(({ error }) => error && console.warn("clearSubmissions comments", error.message));
   }
 
   /** Reset the whole session: clear content AND remove all participants. */
@@ -778,12 +835,112 @@ class SupabaseDB {
     for (const s of this.cache.submissions) if (s.room_id === roomId) acc[s.status]++;
     return acc;
   }
+  /** Participant contributions only — the facilitator's own posts don't count. */
+  countContributions(roomId: string): number {
+    return this.cache.submissions.filter((s) => s.room_id === roomId && countsAsContribution(s)).length;
+  }
+
+  // ---- comments -------------------------------------------------------------
+  listComments(submissionId: string): SubmissionComment[] {
+    const sub = this.cache.submissions.find((s) => s.id === submissionId);
+    if (sub) void this.ensureComments(sub.room_id);
+    return this.cache.comments
+      .filter((c) => c.submission_id === submissionId && c.status === "published")
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }
+  countCommentsBySubmission(roomId: string): Record<string, number> {
+    void this.ensureComments(roomId);
+    const acc: Record<string, number> = {};
+    for (const c of this.cache.comments) {
+      if (c.room_id === roomId && c.status === "published") acc[c.submission_id] = (acc[c.submission_id] ?? 0) + 1;
+    }
+    return acc;
+  }
+  private commentsLoaded = new Set<string>();
+  private async ensureComments(roomId: string) {
+    if (this.commentsLoaded.has(roomId)) return;
+    this.commentsLoaded.add(roomId);
+    await this.loadComments(roomId);
+  }
+  private async loadComments(roomId: string) {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data } = await sb.from("submission_comments").select("*").eq("room_id", roomId).eq("status", "published");
+    if (data) {
+      this.cache.comments = this.cache.comments.filter((c) => c.room_id !== roomId).concat(data as SubmissionComment[]);
+      this.signalRoom("comments", roomId);
+    }
+  }
+
+  createComment(input: {
+    submissionId: string;
+    body: string;
+    authorProfileId?: string | null;
+    participantSessionId?: string | null;
+    displayName?: string | null;
+    anonymous?: boolean;
+  }): SubmissionComment | null {
+    const sub = this.cache.submissions.find((s) => s.id === input.submissionId);
+    const body = input.body.trim();
+    if (!sub || !body) return null;
+    const room = this.cache.rooms.find((r) => r.id === sub.room_id);
+    const byFacilitator = !!input.authorProfileId;
+    const nowIso = new Date().toISOString();
+    const comment: SubmissionComment = {
+      id: uuid(),
+      submission_id: sub.id,
+      room_id: sub.room_id,
+      organization_id: sub.organization_id,
+      body,
+      author_profile_id: input.authorProfileId ?? null,
+      participant_session_id: input.participantSessionId ?? null,
+      display_name: input.anonymous ? null : input.displayName ?? null,
+      anonymous: !byFacilitator && !!input.anonymous,
+      status: "published",
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+    this.cache.comments.push(comment);
+    this.signalRoom("comments", sub.room_id);
+    const sb = getSupabase();
+    if (!sb) return comment;
+    // Same split as submissions: the facilitator writes under her org's RLS
+    // policy, a participant goes through the SECURITY DEFINER RPC.
+    if (byFacilitator) {
+      void sb.from("submission_comments").insert(comment).then(({ error }) => error && console.warn("createComment", error.message));
+    } else if (room) {
+      void sb
+        .rpc("create_comment", {
+          p_id: comment.id,
+          p_public_id: room.public_id,
+          p_session_id: input.participantSessionId,
+          p_submission_id: sub.id,
+          p_body: body,
+          p_anonymous: comment.anonymous,
+          p_display_name: input.displayName ?? null,
+        })
+        .then(({ error }) => error && console.warn("create_comment", error.message));
+    }
+    return comment;
+  }
+
+  deleteComment(id: string): void {
+    const idx = this.cache.comments.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    const comment = this.cache.comments[idx]!;
+    this.cache.comments[idx] = { ...comment, status: "deleted", updated_at: new Date().toISOString() };
+    this.signalRoom("comments", comment.room_id);
+    const sb = getSupabase();
+    void sb?.from("submission_comments").update({ status: "deleted" }).eq("id", id)
+      .then(({ error }) => error && console.warn("deleteComment", error.message));
+  }
   createSubmission(input: {
     roomId: string;
     type: SubmissionType;
     text?: string | null;
     mediaUrl?: string | null;
-    participantSessionId: string;
+    participantSessionId: string | null;
+    authorProfileId?: string | null;
     displayName?: string | null;
     anonymous?: boolean;
     zoneId?: string | null;
@@ -791,6 +948,7 @@ class SupabaseDB {
   }): Submission {
     const room = this.cache.rooms.find((r) => r.id === input.roomId);
     const id = uuid();
+    const byFacilitator = !!input.authorProfileId;
     const nowIso = new Date().toISOString();
     const submission: Submission = {
       id,
@@ -801,9 +959,11 @@ class SupabaseDB {
       media_url: input.mediaUrl ?? null,
       zone_id: input.zoneId ?? null,
       participant_session_id: input.participantSessionId,
+      author_profile_id: input.authorProfileId ?? null,
       display_name: input.anonymous ? null : input.displayName ?? null,
-      anonymous: !!input.anonymous,
-      status: input.moderationMode === "approval" ? "pending" : "published",
+      anonymous: !byFacilitator && !!input.anonymous,
+      // The facilitator's own post never queues for her own approval.
+      status: !byFacilitator && input.moderationMode === "approval" ? "pending" : "published",
       pinned: false,
       created_at: nowIso,
       updated_at: nowIso,
@@ -811,6 +971,13 @@ class SupabaseDB {
     this.cache.submissions.push(submission);
     this.signalRoom("submissions", input.roomId);
     const sb = getSupabase();
+    // A facilitator writes to the table directly under her org's RLS policy.
+    // The RPC is the anonymous participant path only — it demands a valid
+    // participant session, which a facilitator post has none of.
+    if (sb && byFacilitator) {
+      void sb.from("submissions").insert(submission).then(({ error }) => error && console.warn("createSubmission", error.message));
+      return submission;
+    }
     if (sb && room) {
       void sb.rpc("create_submission", {
         p_id: id,
@@ -882,9 +1049,10 @@ class SupabaseDB {
     this.cache = emptyDb();
     this.orgHydrated = false;
     this.activeHydrated = false;
+    this.commentsLoaded.clear();
     void this.hydrateOrg(true);
   }
-  resetMemoryForTest() { this.cache = emptyDb(); }
+  resetMemoryForTest() { this.cache = emptyDb(); this.commentsLoaded.clear(); }
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -920,7 +1088,7 @@ function defaultAppearance(): Board["appearance"] {
   return { background_theme: "soft", background_color: null, background_texture: "none", background_image_url: null, client_logo_url: null, show_org_logo: true, card_style: "elevated", font_scale: "md" };
 }
 function defaultParticipation(): Board["participation"] {
-  return { allow_text: true, allow_image: true, allow_giphy: true, allow_youtube: true, name_policy: "optional", anonymous_allowed: true, multiple_submissions: true, text_char_limit: DEFAULT_TEXT_CHAR_LIMIT, image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB, allow_participant_edit: false, allow_participant_delete: true };
+  return { allow_text: true, allow_image: true, allow_giphy: true, allow_youtube: true, name_policy: "optional", anonymous_allowed: true, multiple_submissions: true, text_char_limit: DEFAULT_TEXT_CHAR_LIMIT, image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB, allow_participant_edit: false, allow_participant_delete: true, allow_participant_comments: false };
 }
 
 // Boards store grouped config as jsonb; strip the client-only collaborator_ids

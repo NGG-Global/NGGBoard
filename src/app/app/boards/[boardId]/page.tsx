@@ -65,7 +65,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(280px, 1fr)", gap: 24, alignItems: "start" }} className="ngg-detail-grid">
           {/* Left: preview + sessions */}
           <div style={{ display: "flex", flexDirection: "column", gap: 22, minWidth: 0 }}>
-            <EditorPreview title={board.public_title} subtitle={board.public_subtitle} appearance={board.appearance} participation={board.participation} layout={board.default_layout} />
+            <EditorPreview title={board.public_title} subtitle={board.public_subtitle} appearance={board.appearance} participation={board.participation} layout={board.default_layout} seedPosts={board.seed_posts} />
 
             <section>
               <h2 style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-extrabold)", marginBottom: 12 }}>{t("היסטוריית מפגשים")}</h2>

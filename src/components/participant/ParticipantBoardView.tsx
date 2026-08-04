@@ -5,9 +5,16 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { useI18n } from "@/lib/i18n/react";
+import { themeVisual } from "@/lib/board-visuals";
+import { deadlinePassed } from "@/lib/rooms";
 import { DisplayCanvas } from "@/components/display/DisplayCanvas";
+import { CommentThread, type CommentAuthor } from "@/components/app/CommentThread";
 import { Button, Spinner } from "@/components/ui";
 import { IconChevron, IconWarning } from "@/components/ui/icons";
+
+function sessionKey(publicId: string) {
+  return `ngg_participant_${publicId}`;
+}
 
 /**
  * The board as a participant reads it on their own phone.
@@ -38,6 +45,16 @@ export function ParticipantBoardView({ publicId }: { publicId: string }) {
     return () => clearTimeout(id);
   }, [publicId]);
 
+  // The stored participant session is what lets a reply be attributed. Someone
+  // who reached the board without joining can read the threads but not add to
+  // them — there is no identity to attach.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(sessionKey(publicId));
+    if (stored && db.getParticipant(stored)) setSessionId(stored);
+  }, [publicId]);
+
   if (!mounted || (!room && !graceOver)) {
     return (
       <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", background: "var(--surface-sunken)" }}>
@@ -57,6 +74,20 @@ export function ParticipantBoardView({ publicId }: { publicId: string }) {
       </div>
     );
   }
+
+  const participant = sessionId ? db.getParticipant(sessionId) : null;
+  const participantAuthor: CommentAuthor | null = participant
+    ? {
+        kind: "participant",
+        sessionId: participant.id,
+        displayName: participant.display_name,
+        anonymous: board.participation.anonymous_allowed && !participant.display_name,
+      }
+    : null;
+  // Replies need the board to allow them, an identity to attach, and a board
+  // that is still open — a closed collection stops taking replies too.
+  const roomOpen = room.status === "active" && !deadlinePassed(room);
+  const canComment = board.participation.allow_participant_comments && !!participantAuthor && roomOpen;
 
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)" }}>
@@ -91,7 +122,23 @@ export function ParticipantBoardView({ publicId }: { publicId: string }) {
       </header>
 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        <DisplayCanvas room={room} board={board} submissions={submissions} joinUrl="" viewer />
+        <DisplayCanvas
+          room={room}
+          board={board}
+          submissions={submissions}
+          joinUrl=""
+          viewer
+          renderFooter={(s) => (
+            <CommentThread
+              key={s.id}
+              submission={s}
+              author={participantAuthor}
+              canWrite={canComment}
+              blockedWords={board.moderation.blocked_words}
+              tone="light"
+            />
+          )}
+        />
       </div>
     </div>
   );

@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DisplayLayout, Submission } from "@/lib/types";
 import { useI18n } from "@/lib/i18n/react";
-import { db } from "@/lib/data";
+import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery, useMounted, useTicker } from "@/lib/hooks";
 import { useInactivityMonitor } from "@/lib/useInactivity";
 import { formatAgo, formatRoomCode, minutesBetween } from "@/lib/utils";
 import { Button, ConfirmDialog, QRCodeCanvas, RoomStatusBadge, Spinner, useToast, LiveDot } from "@/components/ui";
 import { LayoutIcon } from "@/components/app/editor/BoardEditor";
 import { ControlSubmissionCard, type CardActions } from "@/components/control/ControlSubmissionCard";
+import { CommentThread } from "@/components/app/CommentThread";
 import { DisplayCanvas, type FacilitatorControls } from "@/components/display/DisplayCanvas";
 import {
   IconChevron,
@@ -350,7 +351,23 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
                   </div>
                 ) : (
                   listItems.map((s) => (
-                    <ControlSubmissionCard key={s.id} submission={s} board={board} focused={room.focused_submission_id === s.id} actions={listActionsFor(s)} />
+                    <ControlSubmissionCard
+                      key={s.id}
+                      submission={s}
+                      board={board}
+                      focused={room.focused_submission_id === s.id}
+                      actions={listActionsFor(s)}
+                      thread={
+                        tab === "published" ? (
+                          <CommentThread
+                            submission={s}
+                            author={{ kind: "facilitator", profileId: CURRENT_USER_ID }}
+                            canWrite
+                            blockedWords={board.moderation.blocked_words}
+                          />
+                        ) : undefined
+                      }
+                    />
                   ))
                 )}
               </div>

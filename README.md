@@ -69,6 +69,10 @@ An authenticated employee can:
 12. ✅ Export a visual record of the session (PNG)
 13. ✅ Open a board for **asynchronous collection** — one durable link,
     pinned instructions, a deadline, and a review surface for what accumulates
+14. ✅ Author the board's **opening content** at edit time (text / image / video),
+    present from the moment the board opens
+15. ✅ **Reply** to posts — the facilitator always, participants when the board
+    opts in
 
 Plus: login, dashboard with all views/search/filters, board detail, org admin
 overview, template gallery placeholder, and intentional empty / loading /
@@ -151,9 +155,11 @@ src/lib/data/realtime.ts        ← BroadcastChannel realtime bus
 >    email before first login (or enable auto-confirm under Auth → settings for
 >    smoother onboarding). This is why the authenticated facilitator flow can't
 >    be exercised headlessly and needs a real confirmed user.
-> 5. Run `supabase/migrations/0010_open_collection.sql` — **required for open
->    collection boards**. Until it runs, `live_rooms.mode` doesn't exist, so the
->    inactivity sweep suspends an open board 30 minutes after its link goes out.
+> 5. Run `supabase/migrations/0010_open_collection.sql` — **required**. It
+>    carries three features in one file (open collection, opening content,
+>    replies). Until it runs, `live_rooms.mode` doesn't exist, so the inactivity
+>    sweep suspends an open board 30 minutes after its link goes out, and neither
+>    opening content nor replies have anywhere to live.
 
 The app is architected so this is an isolated swap — screens don't change. The
 full step-by-step, for reference / a fresh project:
@@ -307,6 +313,69 @@ participant. Closing that properly means identifying people (an email or SMS
 code), which contradicts the no-login promise that makes the participant side
 work at all. The limitation is accepted rather than papered over.
 
+## The board's opening content
+
+The facilitator can author posts while building the board — guidance cards, a
+reference image, a video to watch first — and they are on the board from the
+moment it opens (editor section 8, "תוכן פתיחה של הלוח").
+
+They live on the **board** (`Board.seed_posts`, jsonb) rather than as
+submissions, because the board is edited before any room exists for a submission
+to belong to. Activating a room copies them into that room's submissions, so
+every session of the board opens with the same framing and the posts flow
+through moderation, the display, results and PNG export as ordinary rows.
+
+That copy is what forces two schema changes: a facilitator's post has no
+participant session, so `submissions.participant_session_id` becomes nullable and
+`submissions.author_profile_id` records who wrote it instead. Exactly one of the
+two is set (enforced by a check constraint).
+
+Consequences worth knowing:
+
+- **Facilitator posts publish outright**, even on an approval board — sending her
+  own guidance to her own approval queue would leave the board blank until she
+  approved herself.
+- **They don't count as contributions.** `db.countContributions(roomId)` excludes
+  them, so the collection panel and dashboard card don't report a board holding
+  three guidance cards as one with three contributions.
+- **They're always attributed to the facilitator**, with a "מנחה" badge. The
+  board's `hide_identity_on_display` setting protects participants; labelling the
+  facilitator's own guidance "אנונימי" would read as a stray answer.
+- **Continuing a previous session** carries participant content only. The current
+  seed posts are materialized fresh, so continuing never doubles a guidance card
+  and never resurrects wording that has since been edited.
+- **Videos take a pasted link**, not the participant search picker: a facilitator
+  at a desk already has the URL, and paste-only needs no YouTube API key. The
+  stored URL is rebuilt from the parsed video id, never kept as typed.
+- The editor's live preview shows the real opening cards once the board has any —
+  it claims to show how the board will look, so it has to.
+
+## Replies on posts
+
+Any post on the board can be replied to (`submission_comments`).
+
+- **The facilitator can always reply**, from the control room's published tab.
+  She can also delete any reply.
+- **Participants can reply only when the board opts in** —
+  `participation.allow_participant_comments`, default **off**. A board where
+  participants discuss each other's contributions is a different kind of board
+  and should be a deliberate choice.
+- **Threads appear on the guest board view and in the moderation card, never on
+  the projector.** Reply text is unreadable from across a room and the projector
+  is deliberately spare. `DisplayCanvas` takes a `renderFooter` render prop so
+  the display components stay unaware that comments exist at all.
+- **Replies follow their post.** Deleting or clearing a post soft-deletes its
+  replies; a reply is never visible when the post it hangs off is not.
+- **Server-side:** participants write through the `create_comment` RPC, which
+  enforces room state, the collection deadline, session validity, a 3s rate
+  limit, length caps and the board's blocked words.
+- One deliberate departure from the file's convention: the
+  `allow_participant_comments` check in `create_comment` **fails closed**, unlike
+  the fail-open participation checks in `create_submission`. Participant replies
+  are opt-in and default to off, so a board whose config predates the feature
+  (no key at all) must not accept them — fail-open there would silently switch
+  the feature on for every existing board.
+
 ## GIF & sticker submissions (Giphy)
 
 Participants can search and send GIFs / stickers from the Giphy library (a
@@ -396,6 +465,21 @@ watch URL.
 - [ ] Extending the deadline on a closed collection reopens it
 - [ ] Dashboard card shows "פתוח לאיסוף" plus the pending-approval count
 
+**Board opening content**
+- [ ] Editor section 8 adds text / image / video items, reorders and removes them
+- [ ] A pasted YouTube link previews a thumbnail; a bad link shows an error
+- [ ] The live preview shows the real opening cards with a "מנחה" badge
+- [ ] Activating a room opens the board with that content already on it
+- [ ] It publishes even on an approval board, and is not counted as a contribution
+- [ ] Continuing a previous session shows one copy, with the current wording
+
+**Replies**
+- [ ] Facilitator can reply from the control room's published tab, and delete replies
+- [ ] With `allow_participant_comments` off, the guest board shows no reply box
+- [ ] With it on, a participant can reply and is attributed correctly
+- [ ] Replies never appear on the projector
+- [ ] Deleting a post removes its replies
+
 **Projector display**
 - [ ] Card wall / mosaic / live feed all readable from a distance
 - [ ] Handles 1, 5, 20, 100 submissions (pagination cycles above one screen)
@@ -420,7 +504,11 @@ participant join, immediate vs approval publishing, approval flow, hide/restore
 + focus drop, **inactivity suspension**, reactivation, organization isolation,
 file-type validation, text sanitisation, and the open-collection lifecycle
 (inactivity exemption, deadline closing, deadline extension reopening, and
-legacy rooms normalising to live mode).
+legacy rooms normalising to live mode), the board's opening content (copied into
+every activation, published despite approval mode, empty items skipped, excluded
+from contribution counts, and not duplicated when continuing a session), and
+replies (facilitator and participant authorship, thread ordering, deletion, and
+removal alongside their post).
 
 ---
 
@@ -437,6 +525,9 @@ legacy rooms normalising to live mode).
   Storage removes this limit.
 - Sharing implements private / selected / organization (team & link-only are
   modeled but not fully surfaced in the UI).
+- **"Continue a previous session" is local-backend only.** `SupabaseDB.activateRoom`
+  accepts the option for signature parity but does not copy the prior room's
+  submissions. Pre-existing gap, not introduced by the open-collection work.
 - Two remaining transitive npm audit advisories come from Next.js's bundled
   build dependencies; the only "fix" downgrades Next to v9 (a breaking
   regression), so we stay on the latest patched 15.x line.

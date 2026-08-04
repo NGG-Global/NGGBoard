@@ -61,6 +61,12 @@ export interface BoardParticipationSettings {
   image_size_limit_mb: number;
   allow_participant_edit: boolean;
   allow_participant_delete: boolean;
+  /**
+   * Whether participants may reply to posts on the board. Opt-in: the
+   * facilitator can always reply, but participant-to-participant discussion is
+   * a different kind of board and should be a deliberate choice.
+   */
+  allow_participant_comments: boolean;
 }
 
 export interface BoardModerationSettings {
@@ -136,6 +142,18 @@ export interface Board {
   default_sort: SortOrder;
   /** 1–4 named regions. Length < 2 means the board is undivided. */
   zones: BoardZone[];
+  /**
+   * Content the facilitator authors while building the board, which is on the
+   * board from the moment it opens — guidance cards, a reference image, a video
+   * to watch before contributing.
+   *
+   * Stored on the BOARD rather than as submissions because the board is edited
+   * before any room exists to attach a submission to. Each activation copies
+   * them into that room's submissions, so every session of the board opens with
+   * the same framing and they flow through moderation, the display, results and
+   * export as ordinary posts.
+   */
+  seed_posts: BoardSeedPost[];
   tags: string[];
   folder: string | null;
   collaborator_ids: string[];
@@ -225,11 +243,56 @@ export interface Submission {
   media_url: string | null;
   /** Which board zone this belongs to (null when the board is undivided). */
   zone_id: string | null;
-  participant_session_id: string;
+  /** Null on a facilitator's own post — it comes from no participant session. */
+  participant_session_id: string | null;
+  /**
+   * Set when the post is the facilitator's own (materialized from the board's
+   * `seed_posts`, or added during a session). Exactly one of this and
+   * `participant_session_id` is set; see `isFacilitatorPost`.
+   */
+  author_profile_id: string | null;
   display_name: string | null;
   anonymous: boolean;
   status: SubmissionStatus;
   pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A post the facilitator writes into the board at edit time. Deliberately a
+ * subset of `Submission`: no author, status or room — those are decided when a
+ * room is activated and the seed post becomes a real submission.
+ */
+export interface BoardSeedPost {
+  /** Stable within the board, so reordering and editing don't lose identity. */
+  id: string;
+  type: SubmissionType;
+  text: string;
+  /** Data URL / CDN URL for an image, or a YouTube watch URL for a video. */
+  media_url: string | null;
+  /** Which zone it opens in (null when the board is undivided). */
+  zone_id: string | null;
+  /** Keep it at the front of the board as content arrives. */
+  pinned: boolean;
+}
+
+/**
+ * A reply on a post. Written either by the facilitator (`author_profile_id`) or,
+ * when the board allows it, by a participant (`participant_session_id`).
+ */
+export interface SubmissionComment {
+  id: string;
+  submission_id: string;
+  room_id: string;
+  organization_id: string;
+  body: string;
+  author_profile_id: string | null;
+  participant_session_id: string | null;
+  display_name: string | null;
+  anonymous: boolean;
+  /** Only `published`, `hidden` and `deleted` are used for comments. */
+  status: SubmissionStatus;
   created_at: string;
   updated_at: string;
 }
@@ -265,6 +328,7 @@ export interface ModerationAction {
 export type ActivityEventType =
   | "participant_joined"
   | "submission_created"
+  | "comment_created"
   | "submission_approved"
   | "submission_rejected"
   | "facilitator_action"

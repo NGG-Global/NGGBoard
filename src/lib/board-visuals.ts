@@ -9,7 +9,7 @@ const DEFAULT_PARTICIPATION: Board["participation"] = {
   allow_text: true, allow_image: true, allow_giphy: true, allow_youtube: true, name_policy: "optional", anonymous_allowed: true,
   multiple_submissions: true, text_char_limit: DEFAULT_TEXT_CHAR_LIMIT,
   image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB, allow_participant_edit: false,
-  allow_participant_delete: true,
+  allow_participant_delete: true, allow_participant_comments: false,
 };
 const DEFAULT_MODERATION: Board["moderation"] = {
   mode: "immediate", hide_identity_on_display: false, blocked_words: [],
@@ -27,6 +27,7 @@ export function normalizeBoard(board: Board): Board {
   return {
     ...board,
     instructions: board.instructions ?? "",
+    seed_posts: Array.isArray(board.seed_posts) ? board.seed_posts : [],
     appearance: { ...DEFAULT_APPEARANCE, ...(board.appearance ?? {}) },
     participation: { ...DEFAULT_PARTICIPATION, ...(board.participation ?? {}) },
     moderation: { ...DEFAULT_MODERATION, ...(board.moderation ?? {}) },

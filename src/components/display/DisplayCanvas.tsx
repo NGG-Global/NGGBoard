@@ -39,6 +39,12 @@ interface Props {
    * so they can't swallow the scroll or hide the content the guest came to read.
    */
   viewer?: boolean;
+  /**
+   * Extra content rendered under each card. The guest view uses it for reply
+   * threads; the projector passes nothing. Keeping it a render prop means the
+   * canvas never has to know what comments are.
+   */
+  renderFooter?: (submission: Submission) => React.ReactNode;
 }
 
 function columnsFor(count: number): number {
@@ -54,7 +60,7 @@ function pageSizeFor(layout: Board["default_layout"], count: number): number {
   return count <= 20 ? count : 20; // wall/mosaic paginate above 20
 }
 
-export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip, viewer }: Props) {
+export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip, viewer, renderFooter }: Props) {
   const { t } = useI18n();
   const v = themeVisual(board.appearance);
   const zoned = isZoned(board);
@@ -197,12 +203,12 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
         {ordered.length === 0 && !zoned ? (
           <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
         ) : zoned ? (
-          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} scrollable={scrollable} viewer={viewer} />
+          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} scrollable={scrollable} viewer={viewer} renderFooter={renderFooter} />
         ) : room.layout === "mosaic" ? (
           <div style={viewer ? { columnWidth: 260, columnGap: "clamp(12px, 1.4vw, 22px)" } : { columns: cols, columnGap: "clamp(12px, 1.4vw, 22px)", height: "100%", overflow: "hidden" }}>
             {shown.map((s) => (
               <div key={s.id} style={{ marginBottom: "clamp(12px, 1.4vw, 22px)", breakInside: "avoid" }}>
-                <DisplaySubmission submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
+                <DisplaySubmission submission={s} board={board} scale={densityScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
               </div>
             ))}
           </div>
@@ -210,7 +216,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
           <div style={{ display: "grid", gridTemplateColumns: viewer || shown.length <= 4 ? "1fr" : "1fr 1fr", gap: "clamp(12px, 1.4vw, 22px)", height: scrollable ? undefined : "100%", alignContent: "start" }}>
             {shown.map((s, i) => (
               <div key={s.id} style={{ gridColumn: !viewer && i === 0 && shown.length > 4 ? "1 / -1" : undefined }}>
-                <DisplaySubmission submission={s} board={board} scale={densityScale * (!viewer && i === 0 ? 1.15 : 1)} facilitator={facFor(s)} />
+                <DisplaySubmission submission={s} board={board} scale={densityScale * (!viewer && i === 0 ? 1.15 : 1)} facilitator={facFor(s)} footer={renderFooter?.(s)} />
               </div>
             ))}
           </div>
@@ -225,7 +231,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
             }}
           >
             {shown.map((s) => (
-              <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} facilitator={facFor(s)} />
+              <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
             ))}
           </div>
         ) : (
@@ -381,6 +387,7 @@ function ZonedContent({
   facFor,
   scrollable,
   viewer,
+  renderFooter,
 }: {
   zones: BoardZone[];
   ordered: Submission[];
@@ -390,6 +397,7 @@ function ZonedContent({
   facFor: (s: Submission) => FacilitatorCardActions | undefined;
   scrollable: boolean;
   viewer?: boolean;
+  renderFooter?: (submission: Submission) => React.ReactNode;
 }) {
   const { t } = useI18n();
   const firstZoneId = zones[0]?.id;
@@ -420,7 +428,7 @@ function ZonedContent({
               {items.length === 0 ? (
                 <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
               ) : (
-                (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug={!viewer} dense={!viewer && zones.length >= 3} />)
+                (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug={!viewer} dense={!viewer && zones.length >= 3} footer={renderFooter?.(s)} />)
               )}
             </div>
           </div>

@@ -268,7 +268,7 @@ export function BoardCard({
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
           {activeRoom
             ? openCollection
-              ? t("נאספו {items} שיתופים מ-{participants} משתתפים", { items: db.listSubmissions(activeRoom.id).length, participants: activeRoom.participant_count })
+              ? t("נאספו {items} שיתופים מ-{participants} משתתפים", { items: db.countContributions(activeRoom.id), participants: activeRoom.participant_count })
               : t("{participants} משתתפים · {items} פריטי תוכן", { participants: activeRoom.participant_count, items: db.listSubmissions(activeRoom.id).length })
             : lastSession
               ? t("מפגש אחרון · {participants} משתתפים · {items} פריטים · {time}", { participants: lastSession.participants, items: lastSession.items, time: formatAgo(lastSession.endedAt) })

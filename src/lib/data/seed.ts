@@ -5,6 +5,7 @@ import type {
   LiveRoom,
   ModerationAction,
   Organization,
+  SubmissionComment,
   ParticipantSession,
   Profile,
   Submission,
@@ -21,6 +22,7 @@ export interface Database {
   participants: ParticipantSession[];
   activity: ActivityEvent[];
   moderation: ModerationAction[];
+  comments: SubmissionComment[];
 }
 
 const ORG_ID = "org_ngg";
@@ -45,6 +47,7 @@ function defaultParticipation(overrides: Partial<Board["participation"]> = {}): 
     image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB,
     allow_participant_edit: false,
     allow_participant_delete: true,
+    allow_participant_comments: false,
     ...overrides,
   };
 }
@@ -123,6 +126,7 @@ export function buildSeed(): Database {
       default_layout: "wall",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["חדשנות", "הנהלה"],
       folder: "סדנאות",
       collaborator_ids: ["user_yoav"],
@@ -148,6 +152,7 @@ export function buildSeed(): Database {
       default_layout: "feed",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["כנס", "לקוחות"],
       folder: "אירועים",
       collaborator_ids: [CURRENT_USER_ID],
@@ -173,6 +178,7 @@ export function buildSeed(): Database {
       default_layout: "wall",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["רטרו"],
       folder: "צוות פיתוח",
       collaborator_ids: [],
@@ -201,6 +207,27 @@ export function buildSeed(): Database {
       default_layout: "wall",
       default_sort: "oldest",
       zones: [],
+      // Opening content the facilitator wrote while building the board. Copied
+      // into every room this board activates, so the board is never empty when
+      // the first participant arrives.
+      seed_posts: [
+        {
+          id: "sp_frame",
+          type: "text",
+          text: "אתגר טוב לשיתוף הוא כזה שעוד לא פתרתם. מה שמסתדר מעצמו פחות מעניין אותנו כאן.",
+          media_url: null,
+          zone_id: null,
+          pinned: true,
+        },
+        {
+          id: "sp_example",
+          type: "text",
+          text: "דוגמה: \"עובדת מוכשרת שמסרבת לקחת אחריות על פרויקט, ואני לא מבין אם זה חוסר ביטחון או חוסר עניין.\"",
+          media_url: null,
+          zone_id: null,
+          pinned: false,
+        },
+      ],
       tags: ["מנהלים", "עבודה מקדימה"],
       folder: "סדנאות",
       collaborator_ids: ["user_dana"],
@@ -226,6 +253,7 @@ export function buildSeed(): Database {
       default_layout: "mosaic",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["גיבוש"],
       folder: "אירועים",
       collaborator_ids: [],
@@ -342,6 +370,7 @@ export function buildSeed(): Database {
       text_content: null,
       media_url: null,
       zone_id: null,
+      author_profile_id: null,
       display_name: null,
       anonymous: false,
       status: "published",
@@ -447,6 +476,50 @@ export function buildSeed(): Database {
     }),
   );
 
+  // The prework board's seed posts as they exist inside its open room. Written
+  // out here because this room is constructed directly rather than through
+  // activateRoom(), which is what materializes them in the running app.
+  const facilitatorPost = (id: string, text: string, pinned: boolean, agoMs: number): Submission => ({
+    id,
+    room_id: "room_open",
+    organization_id: ORG_ID,
+    type: "text",
+    text_content: text,
+    media_url: null,
+    zone_id: null,
+    participant_session_id: null,
+    author_profile_id: CURRENT_USER_ID,
+    display_name: "דור ואנונו",
+    anonymous: false,
+    status: "published",
+    pinned,
+    created_at: iso(agoMs),
+    updated_at: iso(agoMs),
+  });
+
+  submissions.push(
+    facilitatorPost("sub_seed1", "אתגר טוב לשיתוף הוא כזה שעוד לא פתרתם. מה שמסתדר מעצמו פחות מעניין אותנו כאן.", true, 6 * DAY),
+    facilitatorPost("sub_seed2", 'דוגמה: "עובדת מוכשרת שמסרבת לקחת אחריות על פרויקט, ואני לא מבין אם זה חוסר ביטחון או חוסר עניין."', false, 6 * DAY),
+  );
+
+  // A facilitator reply on a participant's contribution — the second feature.
+  const comments: SubmissionComment[] = [
+    {
+      id: "cmt_1",
+      submission_id: "sub_o1",
+      room_id: "room_open",
+      organization_id: ORG_ID,
+      body: "תודה תמר. זה בדיוק סוג האתגר שנפתח איתו את המפגש — נעבוד עליו בקבוצה.",
+      author_profile_id: CURRENT_USER_ID,
+      participant_session_id: null,
+      display_name: "דור ואנונו",
+      anonymous: false,
+      status: "published",
+      created_at: iso(4 * DAY),
+      updated_at: iso(4 * DAY),
+    },
+  ];
+
   const activity: ActivityEvent[] = [
     { id: "act_1", room_id: "room_active", type: "room_activated", actor_id: CURRENT_USER_ID, meaningful: true, created_at: iso(42 * MIN) },
     { id: "act_2", room_id: "room_active", type: "submission_created", actor_id: null, meaningful: true, created_at: iso(25 * MIN) },
@@ -463,5 +536,5 @@ export function buildSeed(): Database {
     { id: "folder_dev", organization_id: ORG_ID, name: "צוות פיתוח", sort: 2, created_at: iso(30 * DAY) },
   ];
 
-  return { organizations: [org], profiles, folders, boards, rooms, submissions, participants, activity, moderation };
+  return { organizations: [org], profiles, folders, boards, rooms, submissions, participants, activity, moderation, comments };
 }

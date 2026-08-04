@@ -34,7 +34,7 @@ export function CollectionPanel({ board, room: initialRoom }: { board: Board; ro
     { room: initialRoom.id },
     () => {
       db.getRoom(initialRoom.id);
-      return db.countByStatus(initialRoom.id);
+      return { byStatus: db.countByStatus(initialRoom.id), contributions: db.countContributions(initialRoom.id) };
     },
     [initialRoom.id],
   );
@@ -53,7 +53,9 @@ export function CollectionPanel({ board, room: initialRoom }: { board: Board; ro
     setDeadlineDraft(dateInputFromDeadline(room.closes_at));
   }, [room.closes_at]);
 
-  const collected = counts.published + counts.pending + counts.hidden;
+  // Participant contributions only — the board's own opening posts are framing,
+  // not something that "came in".
+  const collected = counts.contributions;
   const closed = room.status === "read_only" || deadlinePassed(room);
   const deadline = formatDeadline(room.closes_at, lang === "he" ? "he-IL" : "en-GB");
 
@@ -126,18 +128,18 @@ export function CollectionPanel({ board, room: initialRoom }: { board: Board; ro
       <div style={{ display: "flex", gap: 8 }}>
         <Stat label={t("שיתופים")} value={collected} />
         <Stat label={t("משתתפים")} value={room.participant_count} icon={<IconUsers size={13} />} />
-        <Stat label={t("ממתין לאישור")} value={counts.pending} highlight={counts.pending > 0} />
+        <Stat label={t("ממתין לאישור")} value={counts.byStatus.pending} highlight={counts.byStatus.pending > 0} />
       </div>
 
-      {counts.pending > 0 && (
+      {counts.byStatus.pending > 0 && (
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--warning)", fontWeight: "var(--weight-semibold)", lineHeight: "var(--leading-relaxed)" }}>
-          {t("יש {count} שיתופים שממתינים לאישור שלכם — עד שיאושרו הם לא מופיעים על הלוח.", { count: counts.pending })}
+          {t("יש {count} שיתופים שממתינים לאישור שלכם — עד שיאושרו הם לא מופיעים על הלוח.", { count: counts.byStatus.pending })}
         </div>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <Link href={`/app/rooms/${room.id}/control`} style={{ textDecoration: "none" }}>
-          <Button variant={counts.pending > 0 ? "primary" : "secondary"} block leadingIcon={<IconMonitor size={15} />}>
+          <Button variant={counts.byStatus.pending > 0 ? "primary" : "secondary"} block leadingIcon={<IconMonitor size={15} />}>
             {t("צפייה בתוכן שנאסף")}
           </Button>
         </Link>

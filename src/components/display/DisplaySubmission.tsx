@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/react";
 import { initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
 import { isGiphyMediaUrl } from "@/lib/giphy";
+import { isFacilitatorPost } from "@/lib/posts";
 import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbnailUrl } from "@/lib/youtube";
 import { IconEyeOff, IconMonitor, IconPin, IconPlay, IconTrash } from "@/components/ui/icons";
 
@@ -43,15 +44,29 @@ interface Props {
   hug?: boolean;
   /** Tighter hug variant for pages with 4+ rows so the composition still fits one screen. */
   dense?: boolean;
+  /**
+   * Extra content below the card body — used for the reply thread in the guest
+   * board view. A slot rather than a comments prop, so this component (and the
+   * projector that shares it) stays unaware that comments exist.
+   */
+  footer?: React.ReactNode;
 }
 
 /** A single submission rendered for the projector — large, high-contrast. */
-export function DisplaySubmission({ submission, board, scale, focus, facilitator, hug, dense }: Props) {
+export function DisplaySubmission({ submission, board, scale, focus, facilitator, hug, dense, footer }: Props) {
   const { t } = useI18n();
-  const hideIdentity = board.moderation.hide_identity_on_display;
-  const anonymous = submission.anonymous || hideIdentity || !submission.display_name;
-  const name = anonymous ? t("אנונימי") : submission.display_name!;
-  const [avBg, avFg] = anonymous ? ["var(--neutral-100)", "var(--neutral-600)"] : avatarColors(submission.id);
+  // A facilitator's own post is always attributed to her: the board's
+  // identity-hiding setting protects participants, and labelling the
+  // facilitator's guidance "אנונימי" would read as a stray participant answer.
+  const byFacilitator = isFacilitatorPost(submission);
+  const hideIdentity = board.moderation.hide_identity_on_display && !byFacilitator;
+  const anonymous = !byFacilitator && (submission.anonymous || hideIdentity || !submission.display_name);
+  const name = anonymous ? t("אנונימי") : submission.display_name || t("המנחה");
+  const [avBg, avFg] = byFacilitator
+    ? ["var(--accent)", "#ffffff"]
+    : anonymous
+      ? ["var(--neutral-100)", "var(--neutral-600)"]
+      : avatarColors(submission.id);
 
   // Long answers read better a step smaller; short quotes can carry more size.
   const textLen = submission.text_content?.length ?? 0;
@@ -163,12 +178,19 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
           {initialFor(anonymous ? null : submission.display_name, anonymous)}
         </span>
         <span style={{ fontSize: nameSize, fontWeight: "var(--weight-bold)", color: "var(--neutral-700)" }}>{name}</span>
+        {byFacilitator && (
+          <span style={{ fontSize: `${0.7 * scale}rem`, fontWeight: "var(--weight-bold)", color: "var(--accent-text)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: "var(--radius-pill)", flex: "none" }}>
+            {t("מנחה")}
+          </span>
+        )}
         {submission.pinned && (
           <span style={{ marginInlineStart: "auto", fontSize: `${0.75 * scale}rem`, fontWeight: "var(--weight-bold)", color: "var(--magenta-600)", background: "var(--magenta-50)", padding: "2px 10px", borderRadius: "var(--radius-pill)" }}>
             {t("מוצמד")}
           </span>
         )}
       </div>
+
+      {footer}
     </div>
   );
 }
