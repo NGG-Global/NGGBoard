@@ -30,6 +30,9 @@ export type BoardStatus = "draft" | "ready" | "archived";
 /** Named presets from the design system's ThemePicker. */
 export type BackgroundTheme = "light" | "soft" | "ink" | "metal";
 
+/** CSS-generated background texture overlaid on the board background. */
+export type BackgroundTexture = "none" | "dots" | "grid" | "diagonal" | "noise";
+
 export type CardStyle = "elevated" | "flat" | "outline";
 export type FontScale = "sm" | "md" | "lg";
 export type DisplayLayout = "wall" | "mosaic" | "feed";
@@ -76,6 +79,7 @@ export interface BoardZone {
 export interface BoardAppearance {
   background_theme: BackgroundTheme;
   background_color: string | null;
+  background_texture: BackgroundTexture;
   background_image_url: string | null;
   client_logo_url: string | null;
   show_org_logo: boolean;

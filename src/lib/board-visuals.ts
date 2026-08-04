@@ -1,8 +1,8 @@
-import type { BackgroundTheme, Board, BoardAppearance, BoardZone, FontScale } from "@/lib/types";
+import type { BackgroundTexture, BackgroundTheme, Board, BoardAppearance, BoardZone, FontScale } from "@/lib/types";
 import { DEFAULT_IMAGE_SIZE_LIMIT_MB, DEFAULT_TEXT_CHAR_LIMIT } from "@/lib/constants";
 
 const DEFAULT_APPEARANCE: Board["appearance"] = {
-  background_theme: "soft", background_color: null, background_image_url: null,
+  background_theme: "soft", background_color: null, background_texture: "none", background_image_url: null,
   client_logo_url: null, show_org_logo: true, card_style: "elevated", font_scale: "md",
 };
 const DEFAULT_PARTICIPATION: Board["participation"] = {
@@ -65,14 +65,49 @@ export const THEME_VISUALS: Record<BackgroundTheme, ThemeVisual> = {
   metal: { background: "var(--gradient-metallic-v)", dark: false, chip: "rgba(255,255,255,.9)", label: "מתכתי" },
 };
 
-export function themeVisual(appearance: Pick<BoardAppearance, "background_theme" | "background_color">): ThemeVisual {
-  const base = THEME_VISUALS[appearance.background_theme];
-  if (appearance.background_color) {
-    // A custom solid color overrides the preset background.
-    const isDark = isColorDark(appearance.background_color);
-    return { ...base, background: appearance.background_color, dark: isDark };
+/** Texture picker metadata (labels are Hebrew i18n keys). */
+export const BACKGROUND_TEXTURES: Record<BackgroundTexture, { label: string }> = {
+  none: { label: "חלק" },
+  dots: { label: "נקודות" },
+  grid: { label: "רשת" },
+  diagonal: { label: "אלכסונים" },
+  noise: { label: "גרעיניות" },
+};
+
+/**
+ * CSS background layer for a texture, tuned for the underlying tone.
+ * All textures are generated in CSS/inline-SVG — no external assets, so they
+ * work offline and cost nothing to load on the projector.
+ */
+export function textureLayer(texture: BackgroundTexture, dark: boolean): string | null {
+  const c = dark ? "rgba(255,255,255,.09)" : "rgba(8,8,16,.07)";
+  switch (texture) {
+    case "dots":
+      return `radial-gradient(${c} 1.4px, transparent 1.5px) 0 0 / 26px 26px repeat`;
+    case "grid":
+      return `linear-gradient(${c} 1px, transparent 1px) 0 0 / 44px 44px repeat, linear-gradient(90deg, ${c} 1px, transparent 1px) 0 0 / 44px 44px repeat`;
+    case "diagonal":
+      return `repeating-linear-gradient(45deg, ${c} 0 1.5px, transparent 1.5px 18px)`;
+    case "noise": {
+      const opacity = dark ? "0.14" : "0.08";
+      const svg = `%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='${opacity}'/%3E%3C/svg%3E`;
+      return `url("data:image/svg+xml,${svg}") 0 0 / 220px 220px repeat`;
+    }
+    default:
+      return null;
   }
-  return base;
+}
+
+export function themeVisual(appearance: Pick<BoardAppearance, "background_theme" | "background_color" | "background_texture">): ThemeVisual {
+  const preset = THEME_VISUALS[appearance.background_theme];
+  // A custom solid color (from the color wheel) overrides the preset background.
+  const custom = appearance.background_color;
+  const dark = custom ? isColorDark(custom) : preset.dark;
+  const baseBackground = custom ?? preset.background;
+  const layer = textureLayer(appearance.background_texture ?? "none", dark);
+  // Multi-layer shorthand: texture pattern(s) painted over the base background.
+  const background = layer ? `${layer}, ${baseBackground}` : baseBackground;
+  return { ...preset, background, dark };
 }
 
 /** Rough luminance check to decide light vs dark text over a solid color. */

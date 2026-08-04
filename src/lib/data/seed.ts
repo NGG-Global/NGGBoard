@@ -57,6 +57,7 @@ function appearance(overrides: Partial<Board["appearance"]> = {}): Board["appear
   return {
     background_theme: "soft",
     background_color: null,
+    background_texture: "none",
     background_image_url: null,
     client_logo_url: null,
     show_org_logo: true,

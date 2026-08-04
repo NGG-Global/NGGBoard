@@ -120,7 +120,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
 
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--text-subtle)" }}>{t("סיכום הגדרות")}</div>
-              <SummaryRow label={t("עיצוב")} value={t(THEME_VISUALS[board.appearance.background_theme].label)} />
+              <SummaryRow label={t("עיצוב")} value={board.appearance.background_color ? t("צבע מותאם אישית") : t(THEME_VISUALS[board.appearance.background_theme].label)} />
               <SummaryRow label={t("תוכן מותר")} value={[board.participation.allow_text && t("טקסט"), board.participation.allow_image && t("תמונות"), board.participation.allow_giphy && "GIF", board.participation.allow_youtube && t("וידאו")].filter(Boolean).join(" · ") || "—"} />
               <SummaryRow label={t("שם משתתף")} value={t(NAME_LABELS[board.participation.name_policy])} />
               <SummaryRow label={t("אישור תוכן")} value={board.moderation.mode === "approval" ? t("אישור לפני הצגה") : t("הצגה מיידית")} />
