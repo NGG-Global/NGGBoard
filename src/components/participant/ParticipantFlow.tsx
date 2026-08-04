@@ -179,6 +179,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           limitReached={limitReached}
           submittedCount={mySubs.length}
           zone={selectedZone}
+          publicId={publicId}
           onChangeZone={zoned ? () => setStep("zone") : undefined}
           onText={() => setStep("text")}
           onImage={() => setStep("image")}
@@ -321,10 +322,16 @@ function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void
   );
 }
 
-function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
+function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, publicId, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; publicId: string; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
   const { t } = useI18n();
   if (limitReached) {
-    return <StateCard icon={<IconCheck size={34} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
+    return (
+      <StateCard icon={<IconCheck size={34} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")}>
+        <div style={{ width: "100%", maxWidth: 320 }}>
+          <BoardViewLink publicId={publicId} />
+        </div>
+      </StateCard>
+    );
   }
   const options = [
     canText && { key: "text", icon: <IconText size={22} />, title: t("תשובת טקסט"), desc: t("רעיון או תשובה קצרה"), tone: "ink" as const, onClick: onText },
@@ -629,9 +636,7 @@ function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: bool
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 320 }}>
         {allowMore && <Button variant="primary" size="lg" block onClick={onAnother}>{t("שליחת תוכן נוסף")}</Button>}
-        <a href={`/display/${publicId}`} target="_blank" rel="noreferrer">
-          <Button variant="outline" size="md" block>{t("צפייה בלוח המשותף")}</Button>
-        </a>
+        <BoardViewLink publicId={publicId} />
       </div>
     </div>
   );
@@ -729,13 +734,29 @@ function Centered({ children }: { children: React.ReactNode }) {
   return <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", background: "var(--surface-sunken)" }}>{children}</div>;
 }
 
-function StateCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+function StateCard({ icon, title, description, children }: { icon: React.ReactNode; title: string; description: string; children?: React.ReactNode }) {
   return (
     <div className="ngg-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, padding: "40px 24px", marginTop: 10 }}>
       <div style={{ width: 64, height: 64, borderRadius: 20, background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-extrabold)" }}>{title}</h2>
       <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>{description}</p>
+      {children}
     </div>
+  );
+}
+
+/**
+ * Opens the board in the participant's own scrollable reading view — not the
+ * projector URL, which is laid out for a fixed 16:9 screen and auto-cycles its
+ * pages. Same tab: a second tab on a phone is a dead end for most participants,
+ * and the board view carries its own way back.
+ */
+function BoardViewLink({ publicId }: { publicId: string }) {
+  const { t } = useI18n();
+  return (
+    <a href={`/join/${publicId}/board`} style={{ display: "block", width: "100%", textDecoration: "none" }}>
+      <Button variant="outline" size="md" block>{t("צפייה בלוח המשותף")}</Button>
+    </a>
   );
 }
 
