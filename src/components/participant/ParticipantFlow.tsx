@@ -6,6 +6,7 @@ import type { Board, BoardZone, LiveRoom, ParticipantSession } from "@/lib/types
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { boardZones, isZoned } from "@/lib/board-visuals";
+import { deadlinePassed, formatDeadline, isOpenRoom } from "@/lib/rooms";
 import { SUBMISSION_RATE_LIMIT_MS } from "@/lib/constants";
 import { findBlockedWord, sanitizeText } from "@/lib/utils";
 import { validateSubmissionText } from "@/lib/validation";
@@ -26,7 +27,7 @@ function sessionKey(publicId: string) {
 }
 
 export function ParticipantFlow({ publicId }: { publicId: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const mounted = useMounted();
   const room = useLiveQuery({ room: publicId }, () => db.getRoomByPublicId(publicId));
   const board = useLiveQuery({ room: publicId }, () => {
@@ -109,11 +110,36 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const zones = boardZones(board);
   const selectedZone = zones.find((z) => z.id === zoneId) ?? null;
 
+  const openBoard = isOpenRoom(room);
+  const deadline = formatDeadline(room.closes_at, lang === "he" ? "he-IL" : "en-GB");
+  // An open board past its deadline goes read-only. Say so in those words —
+  // "view-only mode" means nothing to someone who was sent a link and a date.
+  const collectionClosed = openBoard && (room.status === "read_only" || deadlinePassed(room));
+
   // Room lifecycle gates (apply regardless of step).
+  if (collectionClosed) {
+    return (
+      <ParticipantShell board={board}>
+        <StateCard
+          icon={<IconCheck size={40} />}
+          title={t("האיסוף נסגר")}
+          description={deadline ? t("אפשר היה לשלוח עד {date}. תודה למי שהשתתף — התוכן שנאסף נשמר.", { date: deadline }) : t("הלוח כבר לא מקבל תוכן חדש. תודה למי שהשתתף — התוכן שנאסף נשמר.")}
+        >
+          <div style={{ width: "100%", maxWidth: 320 }}>
+            <BoardViewLink publicId={publicId} />
+          </div>
+        </StateCard>
+      </ParticipantShell>
+    );
+  }
   if (room.status === "ended") {
     return (
       <ParticipantShell board={board}>
-        <StateCard icon={<IconCheck size={40} />} title={t("המפגש הסתיים")} description={t("תודה על ההשתתפות! אי אפשר לשלוח תוכן נוסף.")} />
+        <StateCard icon={<IconCheck size={40} />} title={t("המפגש הסתיים")} description={t("תודה על ההשתתפות! אי אפשר לשלוח תוכן נוסף.")}>
+          <div style={{ width: "100%", maxWidth: 320 }}>
+            <BoardViewLink publicId={publicId} />
+          </div>
+        </StateCard>
       </ParticipantShell>
     );
   }
@@ -140,7 +166,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const progress = step === "join" ? 0 : step === "zone" || step === "choose" ? 1 : step === "done" ? 3 : 2;
 
   return (
-    <ParticipantShell board={board} hero={step === "join" ? "full" : "compact"} progress={progress} participants={room.participant_count}>
+    <ParticipantShell board={board} hero={step === "join" ? "full" : "compact"} progress={progress} participants={room.participant_count} openBoard={openBoard}>
       {!online && (
         <Banner icon={<IconWifiOff size={16} />} color="warning">{t("אין חיבור לרשת — התוכן יישמר ויישלח כשהחיבור יחזור")}</Banner>
       )}
@@ -149,6 +175,11 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
       )}
       {room.status === "read_only" && step !== "done" && (
         <Banner icon={<IconWarning size={16} />} color="info">{t("הלוח במצב צפייה בלבד ואינו מקבל תוכן חדש כרגע.")}</Banner>
+      )}
+      {/* The compose steps drop the instructions card, so the deadline needs its
+          own line there. Join and choose already carry it inside the card. */}
+      {openBoard && room.status === "active" && deadline && step !== "join" && step !== "choose" && step !== "zone" && step !== "done" && (
+        <Banner icon={<IconClock size={16} />} color="info">{t("אפשר לשלוח עד {date}", { date: deadline })}</Banner>
       )}
 
       {step === "join" && (
@@ -159,6 +190,8 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           onName={(v) => { setName(v); setNameError(null); }}
           onContinue={joinRoom}
           participants={room.participant_count}
+          openBoard={openBoard}
+          deadline={deadline}
         />
       )}
 
@@ -179,6 +212,10 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           limitReached={limitReached}
           submittedCount={mySubs.length}
           zone={selectedZone}
+          publicId={publicId}
+          board={board}
+          openBoard={openBoard}
+          deadline={deadline}
           onChangeZone={zoned ? () => setStep("zone") : undefined}
           onText={() => setStep("text")}
           onImage={() => setStep("image")}
@@ -241,6 +278,8 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           allowMore={allowMultiple}
           onAnother={() => { if (zoned) { setZoneId(null); setStep("zone"); } else setStep("choose"); }}
           publicId={publicId}
+          openBoard={openBoard}
+          deadline={deadline}
         />
       )}
     </ParticipantShell>
@@ -249,16 +288,23 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 
 // ---- steps ------------------------------------------------------------------
 
-function JoinStep({ board, name, nameError, onName, onContinue }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; participants: number }) {
+function JoinStep({ board, name, nameError, onName, onContinue, openBoard, deadline }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; participants: number; openBoard?: boolean; deadline?: string | null }) {
   const { t } = useI18n();
   const policy = board.participation.name_policy;
   return (
     <div className="ngg-fade-up" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* On an open board this is the whole brief — there is no facilitator in
+          the room to explain the task — so it comes before the name field. */}
+      <InstructionsCard instructions={board.instructions} deadline={openBoard ? deadline : null} />
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 22, padding: 20, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("הצטרפות למפגש")}</div>
+          <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{openBoard ? t("שיתוף תוכן") : t("הצטרפות למפגש")}</div>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
-            {policy === "disabled" ? t("לחיצה אחת ואתם בפנים — התוכן שתשלחו יופיע על המסך המשותף.") : t("עוד רגע אתם בפנים — איך לקרוא לכם על המסך?")}
+            {policy === "disabled"
+              ? openBoard
+                ? t("לחיצה אחת ואתם בפנים — אפשר לשלוח עכשיו או לחזור לקישור בהמשך.")
+                : t("לחיצה אחת ואתם בפנים — התוכן שתשלחו יופיע על המסך המשותף.")
+              : t("עוד רגע אתם בפנים — איך לקרוא לכם על המסך?")}
           </p>
         </div>
         {policy !== "disabled" && (
@@ -276,6 +322,33 @@ function JoinStep({ board, name, nameError, onName, onContinue }: { board: Board
           <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center" }}>{t("אפשר גם בלי שם — התוכן יוצג כאנונימי")}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The facilitator's brief, plus the deadline when there is one. Rendered as its
+ * own block rather than folded into the header: on an open board a participant
+ * arrives days after being sent the link, with no memory of what was asked.
+ */
+function InstructionsCard({ instructions, deadline }: { instructions: string; deadline?: string | null }) {
+  const { t } = useI18n();
+  const text = instructions?.trim();
+  if (!text && !deadline) return null;
+  return (
+    <div style={{ background: "var(--accent-soft)", border: "1px solid var(--magenta-200)", borderRadius: 20, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+      {text && (
+        <>
+          <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)", letterSpacing: ".02em" }}>{t("ההנחיות")}</div>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text)", lineHeight: "var(--leading-relaxed)", whiteSpace: "pre-line" }}>{text}</p>
+        </>
+      )}
+      {deadline && (
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)", paddingTop: text ? 4 : 0, borderTop: text ? "1px solid var(--magenta-200)" : undefined }}>
+          <IconClock size={14} />
+          {t("אפשר לשלוח עד {date}", { date: deadline })}
+        </div>
+      )}
     </div>
   );
 }
@@ -321,10 +394,16 @@ function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void
   );
 }
 
-function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
+function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, publicId, board, openBoard, deadline, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; publicId: string; board: Board; openBoard?: boolean; deadline?: string | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
   const { t } = useI18n();
   if (limitReached) {
-    return <StateCard icon={<IconCheck size={34} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")} />;
+    return (
+      <StateCard icon={<IconCheck size={34} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")}>
+        <div style={{ width: "100%", maxWidth: 320 }}>
+          <BoardViewLink publicId={publicId} />
+        </div>
+      </StateCard>
+    );
   }
   const options = [
     canText && { key: "text", icon: <IconText size={22} />, title: t("תשובת טקסט"), desc: t("רעיון או תשובה קצרה"), tone: "ink" as const, onClick: onText },
@@ -334,6 +413,9 @@ function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submitt
   ].filter(Boolean) as { key: string; icon: React.ReactNode; title: string; desc: string; tone: ChoiceTone; onClick: () => void }[];
   return (
     <div className="ngg-fade-up" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* A returning participant is restored straight to this step, never seeing
+          the join screen — so the brief has to be here too, not only there. */}
+      <InstructionsCard instructions={board.instructions} deadline={openBoard ? deadline : null} />
       {zone && <ZoneBanner zone={zone} onChange={onChangeZone} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-extrabold)" }}>{t("מה תרצו לשלוח?")}</div>
@@ -599,7 +681,7 @@ function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack }
   );
 }
 
-function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: boolean; allowMore: boolean; onAnother: () => void; publicId: string }) {
+function DoneStep({ approval, allowMore, onAnother, publicId, openBoard, deadline }: { approval: boolean; allowMore: boolean; onAnother: () => void; publicId: string; openBoard?: boolean; deadline?: string | null }) {
   const { t } = useI18n();
   return (
     <div className="ngg-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center", padding: "36px 24px", marginTop: 10 }}>
@@ -624,14 +706,23 @@ function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: bool
           {approval ? t("התוכן נשלח וממתין לאישור המנחה") : t("התוכן שלכם עלה על הלוח!")}
         </h2>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>
-          {approval ? t("ברגע שהמנחה יאשר, התוכן יופיע על המסך המשותף.") : t("אפשר לראות אותו כעת על המסך המשותף.")}
+          {approval
+            ? openBoard
+              ? t("המנחה תעבור על השיתופים ותאשר אותם. אין צורך לעשות דבר נוסף.")
+              : t("ברגע שהמנחה יאשר, התוכן יופיע על המסך המשותף.")
+            : t("אפשר לראות אותו כעת על המסך המשותף.")}
         </p>
+        {/* The single most reassuring thing an open board can say: you are not
+            locked out, and you have not missed your one chance. */}
+        {openBoard && allowMore && (
+          <p style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>
+            {deadline ? t("הקישור נשאר פעיל — אפשר להוסיף עוד עד {date}.", { date: deadline }) : t("הקישור נשאר פעיל — אפשר לחזור ולהוסיף עוד בכל זמן.")}
+          </p>
+        )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 320 }}>
         {allowMore && <Button variant="primary" size="lg" block onClick={onAnother}>{t("שליחת תוכן נוסף")}</Button>}
-        <a href={`/display/${publicId}`} target="_blank" rel="noreferrer">
-          <Button variant="outline" size="md" block>{t("צפייה בלוח המשותף")}</Button>
-        </a>
+        <BoardViewLink publicId={publicId} />
       </div>
     </div>
   );
@@ -645,7 +736,7 @@ function DoneStep({ approval, allowMore, onAnother, publicId }: { approval: bool
  * join screen; every later step collapses it to a compact bar so the content
  * keeps the screen. Purely presentational — flow logic lives in the steps.
  */
-function ParticipantShell({ board, children, hero = "compact", progress = null, participants = 0 }: { board: Board | null; children: React.ReactNode; hero?: "full" | "compact"; progress?: number | null; participants?: number }) {
+function ParticipantShell({ board, children, hero = "compact", progress = null, participants = 0, openBoard }: { board: Board | null; children: React.ReactNode; hero?: "full" | "compact"; progress?: number | null; participants?: number; openBoard?: boolean }) {
   const { t } = useI18n();
   const full = hero === "full" && !!board;
   return (
@@ -688,9 +779,15 @@ function ParticipantShell({ board, children, hero = "compact", progress = null, 
               )}
               {full && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                  {/* Nothing is being broadcast on an open board — people are
+                      contributing over days — so it must not claim to be live. */}
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.18)", borderRadius: "var(--radius-pill)", padding: "5px 12px", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
-                    <span className="ngg-pulse-dot-light" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--magenta-neon)", flex: "none" }} />
-                    {t("בשידור חי")}
+                    {openBoard ? (
+                      <IconClock size={12} />
+                    ) : (
+                      <span className="ngg-pulse-dot-light" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--magenta-neon)", flex: "none" }} />
+                    )}
+                    {openBoard ? t("פתוח לשליחה") : t("בשידור חי")}
                   </span>
                   {participants > 0 && (
                     <span style={{ display: "inline-flex", alignItems: "center", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.18)", borderRadius: "var(--radius-pill)", padding: "5px 12px", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
@@ -729,13 +826,29 @@ function Centered({ children }: { children: React.ReactNode }) {
   return <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", background: "var(--surface-sunken)" }}>{children}</div>;
 }
 
-function StateCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+function StateCard({ icon, title, description, children }: { icon: React.ReactNode; title: string; description: string; children?: React.ReactNode }) {
   return (
     <div className="ngg-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 14, padding: "40px 24px", marginTop: 10 }}>
       <div style={{ width: 64, height: 64, borderRadius: 20, background: "var(--accent-soft)", color: "var(--accent-text)", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-extrabold)" }}>{title}</h2>
       <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>{description}</p>
+      {children}
     </div>
+  );
+}
+
+/**
+ * Opens the board in the participant's own scrollable reading view — not the
+ * projector URL, which is laid out for a fixed 16:9 screen and auto-cycles its
+ * pages. Same tab: a second tab on a phone is a dead end for most participants,
+ * and the board view carries its own way back.
+ */
+function BoardViewLink({ publicId }: { publicId: string }) {
+  const { t } = useI18n();
+  return (
+    <a href={`/join/${publicId}/board`} style={{ display: "block", width: "100%", textDecoration: "none" }}>
+      <Button variant="outline" size="md" block>{t("צפייה בלוח המשותף")}</Button>
+    </a>
   );
 }
 

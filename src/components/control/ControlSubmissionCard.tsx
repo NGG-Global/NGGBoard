@@ -1,6 +1,7 @@
 "use client";
 
 import type { Board, Submission } from "@/lib/types";
+import { isFacilitatorPost } from "@/lib/posts";
 import { useI18n } from "@/lib/i18n/react";
 import { formatAgo, initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
@@ -33,17 +34,25 @@ export function ControlSubmissionCard({
   focused,
   isNew,
   actions,
+  thread,
 }: {
   submission: Submission;
   board: Board;
   focused: boolean;
   isNew?: boolean;
   actions: CardActions;
+  /** Reply thread, when the facilitator can respond to this post. */
+  thread?: React.ReactNode;
 }) {
   const { t } = useI18n();
-  const anonymous = submission.anonymous || !submission.display_name;
-  const name = anonymous ? t("אנונימי") : submission.display_name!;
-  const [avBg, avFg] = anonymous ? ["var(--neutral-100)", "var(--neutral-600)"] : avatarColors(submission.id);
+  const byFacilitator = isFacilitatorPost(submission);
+  const anonymous = !byFacilitator && (submission.anonymous || !submission.display_name);
+  const name = byFacilitator ? submission.display_name || t("המנחה") : anonymous ? t("אנונימי") : submission.display_name!;
+  const [avBg, avFg] = byFacilitator
+    ? ["var(--accent)", "#ffffff"]
+    : anonymous
+      ? ["var(--neutral-100)", "var(--neutral-600)"]
+      : avatarColors(submission.id);
 
   return (
     <div
@@ -75,6 +84,9 @@ export function ControlSubmissionCard({
           <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{formatAgo(submission.created_at)}</span>
         </div>
         <div style={{ flex: 1 }} />
+        {byFacilitator && (
+          <span style={{ background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>{t("תוכן פתיחה")}</span>
+        )}
         {submission.pinned && (
           <span style={{ background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>{t("מוצמד")}</span>
         )}
@@ -109,6 +121,8 @@ export function ControlSubmissionCard({
       {submission.text_content && (
         <div style={{ fontSize: "var(--text-sm)", lineHeight: "var(--leading-relaxed)", overflowWrap: "break-word" }}>{submission.text_content}</div>
       )}
+
+      {thread}
 
       <div style={{ display: "flex", alignItems: "center", gap: 2, borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: "auto" }}>
         {actions.onApprove && (

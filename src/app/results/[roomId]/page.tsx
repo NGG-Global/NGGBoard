@@ -71,7 +71,7 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
         </button>
         <div style={{ flex: 1 }} />
         <LanguageToggle />
-        <Button variant="secondary" leadingIcon={<IconDuplicate size={15} />} onClick={() => { db.activateRoom(board.id, { mode: "continue", sessionLabel: `${room.session_label ?? "מפגש"} — המשך` }); toast.show(t("מפגש חדש נפתח עם התוכן שנאסף")); router.push(`/app/boards/${board.id}`); }}>
+        <Button variant="secondary" leadingIcon={<IconDuplicate size={15} />} onClick={() => { db.activateRoom(board.id, { content: "continue", sessionLabel: `${room.session_label ?? "מפגש"} — המשך` }); toast.show(t("מפגש חדש נפתח עם התוכן שנאסף")); router.push(`/app/boards/${board.id}`); }}>
           {t("שכפל למפגש חדש")}
         </Button>
         <Button variant="primary" leadingIcon={exporting ? <Spinner size={15} color="#fff" /> : <IconDownload size={15} />} onClick={exportPng} disabled={exporting}>

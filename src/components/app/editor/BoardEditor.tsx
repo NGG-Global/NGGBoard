@@ -2,14 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import type { Board, BackgroundTexture, BackgroundTheme, BoardZone, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
+import type { Board, BackgroundTexture, BackgroundTheme, BoardSeedPost, BoardZone, DisplayLayout, NamePolicy, SharingLevel } from "@/lib/types";
 import { db } from "@/lib/data";
 import { BACKGROUND_TEXTURES, THEME_VISUALS, themeVisual } from "@/lib/board-visuals";
 import { boardFormSchema } from "@/lib/validation";
-import { Button, ColorWheel, Input, Radio, Switch, useToast } from "@/components/ui";
+import { Button, ColorWheel, Input, Radio, Switch, Textarea, useToast } from "@/components/ui";
 import { IconChevron } from "@/components/ui/icons";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { useI18n } from "@/lib/i18n/react";
+import { SeedPostsEditor } from "./SeedPostsEditor";
 import { EditorSection } from "./EditorSection";
 import { EditorPreview } from "./EditorPreview";
 
@@ -17,6 +18,7 @@ type Draft = {
   internal_name: string;
   public_title: string;
   public_subtitle: string;
+  instructions: string;
   internal_description: string;
   appearance: Board["appearance"];
   participation: Board["participation"];
@@ -25,6 +27,7 @@ type Draft = {
   default_layout: DisplayLayout;
   default_sort: Board["default_sort"];
   zones: BoardZone[];
+  seed_posts: BoardSeedPost[];
   tags: string[];
   folder: string | null;
 };
@@ -34,6 +37,7 @@ function draftFromBoard(b: Board): Draft {
     internal_name: b.internal_name,
     public_title: b.public_title,
     public_subtitle: b.public_subtitle,
+    instructions: b.instructions ?? "",
     internal_description: b.internal_description,
     appearance: { ...b.appearance },
     participation: { ...b.participation },
@@ -42,6 +46,7 @@ function draftFromBoard(b: Board): Draft {
     default_layout: b.default_layout,
     default_sort: b.default_sort,
     zones: Array.isArray(b.zones) ? b.zones.map((z) => ({ ...z })) : [],
+    seed_posts: Array.isArray(b.seed_posts) ? b.seed_posts.map((sp) => ({ ...sp })) : [],
     tags: [...b.tags],
     folder: b.folder,
   };
@@ -73,6 +78,7 @@ function blankDraft(): Draft {
       image_size_limit_mb: 8,
       allow_participant_edit: false,
       allow_participant_delete: true,
+      allow_participant_comments: false,
     },
     moderation: { mode: "immediate" as const, hide_identity_on_display: false, blocked_words: [] },
   };
@@ -80,6 +86,7 @@ function blankDraft(): Draft {
     internal_name: "",
     public_title: "",
     public_subtitle: "",
+    instructions: "",
     internal_description: "",
     appearance: { ...base.appearance, background_theme: "soft", client_logo_url: null },
     participation: { ...base.participation },
@@ -88,6 +95,7 @@ function blankDraft(): Draft {
     default_layout: "wall",
     default_sort: "newest",
     zones: [],
+    seed_posts: [],
     tags: [],
     folder: null,
   };
@@ -153,6 +161,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       internal_name: draft.internal_name || draft.public_title,
       public_title: draft.public_title.trim(),
       public_subtitle: draft.public_subtitle,
+      instructions: draft.instructions.trim(),
       internal_description: draft.internal_description,
       appearance: draft.appearance,
       participation: draft.participation,
@@ -161,6 +170,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       default_layout: draft.default_layout,
       default_sort: draft.default_sort,
       zones: draft.zones.length >= 2 ? draft.zones : [],
+      seed_posts: draft.seed_posts,
       tags: draft.tags,
       folder: draft.folder,
       status: "ready",
@@ -185,6 +195,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
       s5: t(SHARE_LABELS[draft.sharing]),
       s6: t(LAYOUT_LABELS[draft.default_layout]),
       s7: draft.zones.length >= 2 ? t("{count} אזורים", { count: draft.zones.length }) : t("ללא חלוקה"),
+      s8: draft.seed_posts.length ? t("{count} פריטי פתיחה", { count: draft.seed_posts.length }) : t("הלוח נפתח ריק"),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `lang` re-derives the translated summaries on language change.
   }, [draft, lang]);
@@ -243,6 +254,14 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
           <EditorSection index={1} title={t("פרטים בסיסיים")} summary={summaries.s1} open={openSec === 1} onToggle={() => setOpenSec(openSec === 1 ? 0 : 1)} error={!!titleError}>
             <Input label={t("כותרת ציבורית")} required value={draft.public_title} onChange={(e) => patch({ public_title: e.target.value })} error={titleError} hint={t("הכותרת שהמשתתפים והקהל יראו")} />
             <Input label={t("הנחיה למשתתפים")} value={draft.public_subtitle} onChange={(e) => patch({ public_subtitle: e.target.value })} hint={t("שאלה או משימה קצרה, למשל: מה לוקחים מהסדנה?")} />
+            <Textarea
+              label={t("הנחיות מפורטות (אופציונלי)")}
+              value={draft.instructions}
+              onChange={(e) => patch({ instructions: e.target.value.slice(0, 1200) })}
+              rows={5}
+              placeholder={t("מה אתם מבקשים מהמשתתפים, ולמה זה משמש")}
+              hint={t("מוצג למשתתף לפני השליחה ונעוץ בראש הלוח. חשוב במיוחד בלוח פתוח, שבו אין מנחה בחדר שיסביר.")}
+            />
             <Input label={t("שם פנימי")} value={draft.internal_name} onChange={(e) => patch({ internal_name: e.target.value })} hint={t("רק אתם רואים אותו — לזיהוי ברשימת הלוחות")} />
             <Input label={t("תיקייה / צוות")} value={draft.folder ?? ""} onChange={(e) => patch({ folder: e.target.value || null })} hint={t("לארגון הלוחות, למשל: סדנאות, אירועים")} />
           </EditorSection>
@@ -384,6 +403,12 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
             <Switch label={t("GIF ומדבקות")} description={t("בחירת GIF או מדבקה מספריית GIPHY")} checked={draft.participation.allow_giphy} onChange={(v) => patchParticipation({ allow_giphy: v })} />
             <Switch label={t("סרטוני YouTube")} description={t("חיפוש או הדבקת קישור לסרטון שיוצג על הלוח")} checked={draft.participation.allow_youtube} onChange={(v) => patchParticipation({ allow_youtube: v })} />
             <Switch label={t("מצב אנונימי")} description={t("שמות המשתתפים לא יוצגו על המסך")} checked={draft.participation.anonymous_allowed} onChange={(v) => patchParticipation({ anonymous_allowed: v })} />
+            <Switch
+              label={t("תגובות של משתתפים")}
+              description={t("משתתפים יוכלו להגיב לפוסטים על הלוח. אתם תוכלו להגיב בכל מקרה.")}
+              checked={draft.participation.allow_participant_comments}
+              onChange={(v) => patchParticipation({ allow_participant_comments: v })}
+            />
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)" }}>{t("שם המשתתף")}</div>
               <Radio name="namepolicy" label={t("לא נדרש שם")} checked={draft.participation.name_policy === "disabled"} onChange={() => patchParticipation({ name_policy: "disabled" })} />
@@ -489,6 +514,15 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
                 </div>
               ))}
           </EditorSection>
+
+          <EditorSection index={8} title={t("תוכן פתיחה של הלוח")} summary={summaries.s8} open={openSec === 8} onToggle={() => setOpenSec(openSec === 8 ? 0 : 8)}>
+            <SeedPostsEditor
+              posts={draft.seed_posts}
+              zones={draft.zones.length >= 2 ? draft.zones : []}
+              imageSizeLimitMb={draft.participation.image_size_limit_mb}
+              onChange={(seed_posts) => patch({ seed_posts })}
+            />
+          </EditorSection>
         </div>
 
         {/* Live preview */}
@@ -502,6 +536,7 @@ export function BoardEditor({ boardId }: { boardId?: string }) {
             appearance={draft.appearance}
             participation={draft.participation}
             layout={draft.default_layout}
+            seedPosts={draft.seed_posts}
           />
           <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
             {t("פריסה נבחרת: {layout} · הרקע והלוגו מתעדכנים בזמן אמת", { layout: t(LAYOUT_LABELS[draft.default_layout]) })}

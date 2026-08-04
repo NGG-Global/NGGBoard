@@ -10,6 +10,8 @@ import type {
   LiveRoom,
   ModerationActionType,
   ParticipantSession,
+  RoomMode,
+  SubmissionComment,
   RoomStatus,
   SessionSummary,
   Submission,
@@ -19,6 +21,8 @@ import type {
 import { INACTIVITY_SUSPEND_MS } from "@/lib/constants";
 import { formatRoomCode, generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
 import { normalizeBoard } from "@/lib/board-visuals";
+import { accruesIdleTime, dueRoomStatus, isOpenRoom, normalizeRoom } from "@/lib/rooms";
+import { countsAsContribution, usableSeedPosts } from "@/lib/posts";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import { buildSeed, CURRENT_USER_ID, type Database } from "./seed";
 
@@ -63,7 +67,7 @@ class LocalDB {
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) this.memory = JSON.parse(raw) as Database;
+      if (raw) this.memory = hydrate(JSON.parse(raw) as Database);
     } catch {
       /* keep current memory on parse error */
     }
@@ -81,7 +85,7 @@ class LocalDB {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        this.memory = JSON.parse(raw) as Database;
+        this.memory = hydrate(JSON.parse(raw) as Database);
         return this.memory;
       }
     } catch {
@@ -340,52 +344,71 @@ class LocalDB {
     db.participants = db.participants.filter((p) => !roomIds.has(p.room_id));
     db.activity = db.activity.filter((a) => !roomIds.has(a.room_id));
     db.moderation = db.moderation.filter((m) => !roomIds.has(m.room_id));
+    db.comments = db.comments.filter((c) => !roomIds.has(c.room_id));
     this.commit({ kind: "board-list" });
   }
 
   // ---- rooms ----------------------------------------------------------------
 
   getRoom(id: string): LiveRoom | null {
-    return this.read().rooms.find((r) => r.id === id) ?? null;
+    const room = this.read().rooms.find((r) => r.id === id);
+    return room ? normalizeRoom(room) : null;
   }
 
   getRoomByPublicId(publicId: string): LiveRoom | null {
-    return this.read().rooms.find((r) => r.public_id === publicId) ?? null;
+    const room = this.read().rooms.find((r) => r.public_id === publicId);
+    return room ? normalizeRoom(room) : null;
   }
 
   findRoomByCode(code: string): LiveRoom | null {
     const clean = code.replace(/\s/g, "");
-    return (
+    const room =
       this.read()
         .rooms.filter((r) => r.room_code === clean)
         // Prefer a still-joinable room if codes ever collide across history.
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null
-    );
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null;
+    return room ? normalizeRoom(room) : null;
   }
 
   listRoomsForBoard(boardId: string): LiveRoom[] {
     return this.read()
       .rooms.filter((r) => r.board_id === boardId)
+      .map(normalizeRoom)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   getActiveRoomForBoard(boardId: string): LiveRoom | null {
     return (
-      this.read().rooms.find(
-        (r) => r.board_id === boardId && ["active", "paused", "read_only", "suspended"].includes(r.status),
-      ) ?? null
+      this.read()
+        .rooms.filter((r) => r.board_id === boardId && ["active", "paused", "read_only", "suspended"].includes(r.status))
+        .map(normalizeRoom)[0] ?? null
     );
   }
 
+  /** The board's current open collection window, if one is running. */
+  getOpenRoomForBoard(boardId: string): LiveRoom | null {
+    const room = this.getActiveRoomForBoard(boardId);
+    return room && isOpenRoom(room) ? room : null;
+  }
+
   listActiveRooms(): LiveRoom[] {
-    return this.read().rooms.filter((r) =>
-      ["active", "paused", "read_only", "suspended"].includes(r.status),
-    );
+    return this.read()
+      .rooms.filter((r) => ["active", "paused", "read_only", "suspended"].includes(r.status))
+      .map(normalizeRoom);
   }
 
   activateRoom(
     boardId: string,
-    opts: { sessionLabel?: string; mode?: "fresh" | "continue"; facilitatorId?: string } = {},
+    opts: {
+      sessionLabel?: string;
+      /** Whether to carry the previous session's content into the new room. */
+      content?: "fresh" | "continue";
+      /** Live session (default) or an open collection window. */
+      mode?: RoomMode;
+      /** Open rooms: when collection stops accepting. */
+      closesAt?: string | null;
+      facilitatorId?: string;
+    } = {},
   ): LiveRoom {
     const db = this.read();
     const board = this.getBoard(boardId);
@@ -399,6 +422,8 @@ class LocalDB {
       public_id: `r-${randomId(10)}`,
       room_code: code,
       session_label: opts.sessionLabel?.trim() || null,
+      mode: opts.mode ?? "live",
+      closes_at: opts.mode === "open" ? opts.closesAt ?? null : null,
       status: "active",
       layout: board.default_layout,
       focused_submission_id: null,
@@ -413,12 +438,41 @@ class LocalDB {
     };
     db.rooms.unshift(room);
 
+    // The board's opening content becomes real posts in this room, so it flows
+    // through the display, moderation, results and export like anything else.
+    // Published outright: sending the facilitator's own guidance to her own
+    // approval queue would be nonsense.
+    const facilitatorId = opts.facilitatorId ?? CURRENT_USER_ID;
+    for (const seed of usableSeedPosts(board.seed_posts)) {
+      db.submissions.push({
+        id: `sub_${randomId(8)}`,
+        room_id: room.id,
+        organization_id: board.organization_id,
+        type: seed.type,
+        text_content: seed.text.trim() || null,
+        media_url: seed.media_url,
+        zone_id: seed.zone_id,
+        participant_session_id: null,
+        author_profile_id: facilitatorId,
+        display_name: this.getProfile(facilitatorId)?.full_name ?? null,
+        anonymous: false,
+        status: "published",
+        pinned: seed.pinned,
+        created_at: nowIso,
+        updated_at: nowIso,
+      });
+    }
+
     // "Continue" carries forward the most recent prior session's submissions.
-    if (opts.mode === "continue") {
+    if (opts.content === "continue") {
       const prior = this.listRoomsForBoard(boardId).find((r) => r.id !== room.id && r.status === "ended");
       if (prior) {
         const carried = db.submissions
-          .filter((s) => s.room_id === prior.id && s.status !== "deleted")
+          // Carry only what participants contributed. The prior room's copies of
+          // the board's opening content were materialized above from the board's
+          // CURRENT seed posts — carrying them too would double every guidance
+          // card, and would resurrect wording the facilitator has since edited.
+          .filter((s) => s.room_id === prior.id && s.status !== "deleted" && !s.author_profile_id)
           .map((s) => ({ ...s, id: `sub_${randomId(6)}`, room_id: room.id }));
         db.submissions.push(...carried);
       }
@@ -434,7 +488,7 @@ class LocalDB {
     const db = this.read();
     const idx = db.rooms.findIndex((r) => r.id === id);
     if (idx === -1) throw new Error(`room ${id} not found`);
-    const next = { ...db.rooms[idx]!, ...patch };
+    const next = normalizeRoom({ ...db.rooms[idx]!, ...patch });
     db.rooms[idx] = next;
     this.commit({ kind: signal, roomId: id });
     // A room's status change flips its "active now" membership, which the
@@ -490,20 +544,42 @@ class LocalDB {
   }
 
   /**
-   * Server-timestamp-based inactivity check. Callable from any tab (or a cron/
-   * edge function once on Supabase). Suspends an active room after 30 minutes
-   * without meaningful activity. Returns the (possibly updated) room.
+   * Server-timestamp-based lifecycle check. Callable from any tab (or a cron /
+   * edge function once on Supabase). Returns the (possibly updated) room.
+   *
+   * Live sessions suspend after 30 minutes without meaningful activity. Open
+   * collections never do — quiet stretches are normal for them — and instead
+   * fall to read-only once their deadline passes.
    */
   checkAndApplyInactivity(id: string, nowMs = Date.now()): LiveRoom | null {
     const room = this.getRoom(id);
     if (!room) return null;
-    if (room.status !== "active" && room.status !== "paused") return room;
+    const due = dueRoomStatus(room, nowMs);
+    if (due) {
+      this.logActivity(id, "collection_closed", null, false);
+      return this.setRoomStatus(id, due);
+    }
+    if (!accruesIdleTime(room)) return room;
     const idle = nowMs - new Date(room.last_activity_at).getTime();
     if (idle >= INACTIVITY_SUSPEND_MS) {
       this.logActivity(id, "room_suspended", null, false);
       return this.setRoomStatus(id, "suspended");
     }
     return room;
+  }
+
+  /** Change an open collection's deadline (or clear it with null). */
+  setCollectionDeadline(id: string, closesAt: string | null): LiveRoom {
+    const room = this.getRoom(id);
+    if (!room) throw new Error(`room ${id} not found`);
+    const patch: Partial<LiveRoom> = { closes_at: closesAt };
+    // Extending the deadline on an already-closed collection reopens it —
+    // otherwise the facilitator changes the date and nothing happens.
+    if (room.status === "read_only" && closesAt && new Date(closesAt).getTime() > Date.now()) {
+      patch.status = "active";
+      patch.last_activity_at = new Date().toISOString();
+    }
+    return this.patchRoom(id, patch, "room");
   }
 
   // ---- participants ---------------------------------------------------------
@@ -544,11 +620,17 @@ class LocalDB {
   /** Clear all content from the board (soft-delete every submission), keep the room. */
   clearSubmissions(roomId: string): void {
     const db = this.read();
+    const nowIso = new Date().toISOString();
     db.submissions = db.submissions.map((s) =>
-      s.room_id === roomId && s.status !== "deleted" ? { ...s, status: "deleted", updated_at: new Date().toISOString() } : s,
+      s.room_id === roomId && s.status !== "deleted" ? { ...s, status: "deleted", updated_at: nowIso } : s,
+    );
+    // A reply outlives nothing — it goes with the post it was a reply to.
+    db.comments = db.comments.map((c) =>
+      c.room_id === roomId && c.status !== "deleted" ? { ...c, status: "deleted", updated_at: nowIso } : c,
     );
     this.setFocus(roomId, null);
     this.commit({ kind: "submissions", roomId });
+    this.commit({ kind: "comments", roomId });
   }
 
   /** Reset the whole session: clear content AND remove all participants. */
@@ -590,12 +672,24 @@ class LocalDB {
     return acc;
   }
 
+  /**
+   * How much participants have actually contributed. Excludes the facilitator's
+   * own opening posts — counting her guidance cards would report an empty board
+   * as a busy one.
+   */
+  countContributions(roomId: string): number {
+    return this.read().submissions.filter((s) => s.room_id === roomId && countsAsContribution(s)).length;
+  }
+
   createSubmission(input: {
     roomId: string;
     type: SubmissionType;
     text?: string | null;
     mediaUrl?: string | null;
-    participantSessionId: string;
+    /** Null when the facilitator is posting (see `authorProfileId`). */
+    participantSessionId: string | null;
+    /** Set when the facilitator posts to her own board mid-session. */
+    authorProfileId?: string | null;
     displayName?: string | null;
     anonymous?: boolean;
     zoneId?: string | null;
@@ -603,6 +697,7 @@ class LocalDB {
   }): Submission {
     const db = this.read();
     const nowIso = new Date().toISOString();
+    const byFacilitator = !!input.authorProfileId;
     const submission: Submission = {
       id: `sub_${randomId(8)}`,
       room_id: input.roomId,
@@ -612,15 +707,17 @@ class LocalDB {
       media_url: input.mediaUrl ?? null,
       zone_id: input.zoneId ?? null,
       participant_session_id: input.participantSessionId,
+      author_profile_id: input.authorProfileId ?? null,
       display_name: input.anonymous ? null : input.displayName ?? null,
-      anonymous: !!input.anonymous,
-      status: input.moderationMode === "approval" ? "pending" : "published",
+      anonymous: !byFacilitator && !!input.anonymous,
+      // The facilitator's own post never queues for her own approval.
+      status: !byFacilitator && input.moderationMode === "approval" ? "pending" : "published",
       pinned: false,
       created_at: nowIso,
       updated_at: nowIso,
     };
     db.submissions.push(submission);
-    this.logActivity(input.roomId, "submission_created", null, true);
+    this.logActivity(input.roomId, "submission_created", input.authorProfileId ?? null, true);
     this.commit({ kind: "submissions", roomId: input.roomId });
     return submission;
   }
@@ -656,6 +753,9 @@ class LocalDB {
         break;
       case "delete":
         patch = { status: "deleted" };
+        for (const c of this.read().comments) {
+          if (c.submission_id === id && c.status !== "deleted") c.status = "deleted";
+        }
         break;
       case "pin":
         patch = { pinned: true };
@@ -689,6 +789,73 @@ class LocalDB {
     const next = this.setSubmission(id, { status });
     this.commit({ kind: "submissions", roomId: sub.room_id });
     return next;
+  }
+
+  // ---- comments -------------------------------------------------------------
+
+  /** Visible replies on a post, oldest first — a thread reads in order. */
+  listComments(submissionId: string): SubmissionComment[] {
+    return this.read()
+      .comments.filter((c) => c.submission_id === submissionId && c.status === "published")
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }
+
+  /** Reply counts for a whole room in one pass, for list badges. */
+  countCommentsBySubmission(roomId: string): Record<string, number> {
+    const acc: Record<string, number> = {};
+    for (const c of this.read().comments) {
+      if (c.room_id === roomId && c.status === "published") {
+        acc[c.submission_id] = (acc[c.submission_id] ?? 0) + 1;
+      }
+    }
+    return acc;
+  }
+
+  createComment(input: {
+    submissionId: string;
+    body: string;
+    /** Facilitator reply. */
+    authorProfileId?: string | null;
+    /** Participant reply — requires the board's allow_participant_comments. */
+    participantSessionId?: string | null;
+    displayName?: string | null;
+    anonymous?: boolean;
+  }): SubmissionComment | null {
+    const db = this.read();
+    const sub = db.submissions.find((s) => s.id === input.submissionId);
+    if (!sub) return null;
+    const body = input.body.trim();
+    if (!body) return null;
+    const nowIso = new Date().toISOString();
+    const comment: SubmissionComment = {
+      id: `cmt_${randomId(8)}`,
+      submission_id: sub.id,
+      room_id: sub.room_id,
+      organization_id: sub.organization_id,
+      body,
+      author_profile_id: input.authorProfileId ?? null,
+      participant_session_id: input.participantSessionId ?? null,
+      display_name: input.anonymous ? null : input.displayName ?? null,
+      anonymous: !input.authorProfileId && !!input.anonymous,
+      status: "published",
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+    db.comments.push(comment);
+    this.logActivity(sub.room_id, "comment_created", input.authorProfileId ?? null, true);
+    this.touchActivity(sub.room_id);
+    this.commit({ kind: "comments", roomId: sub.room_id });
+    return comment;
+  }
+
+  /** Soft-delete a reply (the facilitator moderating a thread). */
+  deleteComment(id: string): void {
+    const db = this.read();
+    const idx = db.comments.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    const comment = db.comments[idx]!;
+    db.comments[idx] = { ...comment, status: "deleted", updated_at: new Date().toISOString() };
+    this.commit({ kind: "comments", roomId: comment.room_id });
   }
 
   // ---- activity + moderation log -------------------------------------------
@@ -744,6 +911,16 @@ class LocalDB {
     const room = this.getRoom(roomId);
     return room ? this.getBoard(room.board_id) : null;
   }
+}
+
+/**
+ * Fill in database slices added after a browser last wrote its local copy.
+ * Without this, a returning user's stored DB has no `comments` array and the
+ * first reply attempt throws on a missing property.
+ */
+function hydrate(parsed: Database): Database {
+  if (!Array.isArray(parsed.comments)) parsed.comments = [];
+  return parsed;
 }
 
 export const db = new LocalDB();

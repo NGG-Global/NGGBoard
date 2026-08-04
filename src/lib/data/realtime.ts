@@ -16,6 +16,7 @@ export interface RealtimeSignal {
   /** What changed. Subscribers re-fetch the relevant slice on receipt. */
   kind:
     | "submissions"
+    | "comments"
     | "room"
     | "participants"
     | "focus"

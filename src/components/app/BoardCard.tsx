@@ -7,9 +7,10 @@ import type { Board } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
+import { isOpenRoom } from "@/lib/rooms";
 import { BoardStatusBadge, Badge, ConfirmDialog, LiveDot, RovingMenu, useToast } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/react";
-import { IconFolder } from "@/components/ui/icons";
+import { IconClock, IconFolder } from "@/components/ui/icons";
 import { BoardThumbnail } from "./BoardThumbnail";
 import { MoveToFolderDialog } from "./MoveToFolderDialog";
 import { BOARD_DND_MIME, useDashDnd } from "./dnd";
@@ -36,6 +37,18 @@ export function BoardCard({
   const owner = db.getProfile(board.created_by);
   const activeRoom = useLiveQuery("board-list", () => db.getActiveRoomForBoard(board.id));
   const lastSession = useLiveQuery("board-list", () => (activeRoom ? null : db.getLastSession(board.id)), [!!activeRoom]);
+  const openCollection = isOpenRoom(activeRoom);
+  // Scoped to the room so an arriving submission updates the badge; also what
+  // pulls the room's submissions into the cache on the Supabase backend.
+  const pendingCount = useLiveQuery(
+    activeRoom ? { room: activeRoom.id } : "board-list",
+    () => {
+      if (!activeRoom) return 0;
+      db.getRoom(activeRoom.id);
+      return db.countByStatus(activeRoom.id).pending;
+    },
+    [activeRoom?.id],
+  );
   const dnd = useDashDnd();
   const dragging = dnd.draggingId === board.id;
 
@@ -216,13 +229,23 @@ export function BoardCard({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          {activeRoom ? (
+          {openCollection ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--accent-soft)", color: "var(--accent-text)", border: "1px solid var(--magenta-300)", padding: "2px 9px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
+              <IconClock size={11} />
+              {t("פתוח לאיסוף")}
+            </span>
+          ) : activeRoom ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--accent)", color: "#fff", padding: "2px 9px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)" }}>
               <LiveDot light />
               {t("בשידור חי")}
             </span>
           ) : (
             <BoardStatusBadge status={board.status} />
+          )}
+          {/* Defaulting an open board to approval only protects anyone if the
+              queue is impossible to miss from the dashboard. */}
+          {pendingCount > 0 && (
+            <Badge color="warning" variant="soft">{t("{count} ממתינים לאישור", { count: pendingCount })}</Badge>
           )}
           {shared && owner && (
             <Badge color="neutral" variant="outline">
@@ -244,7 +267,9 @@ export function BoardCard({
 
         <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
           {activeRoom
-            ? t("{participants} משתתפים · {items} פריטי תוכן", { participants: activeRoom.participant_count, items: db.listSubmissions(activeRoom.id).length })
+            ? openCollection
+              ? t("נאספו {items} שיתופים מ-{participants} משתתפים", { items: db.countContributions(activeRoom.id), participants: activeRoom.participant_count })
+              : t("{participants} משתתפים · {items} פריטי תוכן", { participants: activeRoom.participant_count, items: db.listSubmissions(activeRoom.id).length })
             : lastSession
               ? t("מפגש אחרון · {participants} משתתפים · {items} פריטים · {time}", { participants: lastSession.participants, items: lastSession.items, time: formatAgo(lastSession.endedAt) })
               : t("נערך {time}", { time: formatAgo(board.updated_at) })}

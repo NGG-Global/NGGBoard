@@ -1,9 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import type { BoardAppearance, BoardParticipationSettings, DisplayLayout } from "@/lib/types";
+import type { BoardAppearance, BoardParticipationSettings, BoardSeedPost, DisplayLayout } from "@/lib/types";
 import { themeVisual } from "@/lib/board-visuals";
-import { IconImage } from "@/components/ui/icons";
+import { usableSeedPosts } from "@/lib/posts";
+import { parseYouTubeVideoId, youTubeThumbnailUrl } from "@/lib/youtube";
+import { IconImage, IconPlay } from "@/components/ui/icons";
 import { useI18n } from "@/lib/i18n/react";
 
 interface PreviewProps {
@@ -12,14 +14,17 @@ interface PreviewProps {
   appearance: BoardAppearance;
   participation: BoardParticipationSettings;
   layout: DisplayLayout;
+  /** The board's opening content, so the preview shows the real thing. */
+  seedPosts?: BoardSeedPost[];
 }
 
 /** Live 16:9 preview of the shared display, updated as the editor changes. */
-export function EditorPreview({ title, subtitle, appearance, participation }: PreviewProps) {
+export function EditorPreview({ title, subtitle, appearance, participation, seedPosts }: PreviewProps) {
   const { t } = useI18n();
   const v = themeVisual(appearance);
   const textColor = v.dark ? "#ffffff" : "var(--neutral-950)";
   const subColor = v.dark ? "rgba(255,255,255,.78)" : "var(--neutral-700)";
+  const opening = usableSeedPosts(seedPosts);
   const names = participation.anonymous_allowed
     ? [t("אנונימי"), t("אנונימי"), t("אנונימי")]
     : [t("נועה ברק"), t("יואב לוי"), t("מיכל אדר")];
@@ -90,8 +95,13 @@ export function EditorPreview({ title, subtitle, appearance, participation }: Pr
         </div>
       </div>
 
-      {/* Sample cards */}
+      {/* Cards: the board's real opening content when it has any, otherwise a
+          sample of what participant answers will look like. */}
       <div style={{ display: "flex", gap: "2.5%", alignItems: "stretch" }}>
+        {opening.length > 0 ? (
+          opening.slice(0, 3).map((post) => <SeedPreviewCard key={post.id} post={post} facilitatorLabel={t("מנחה")} />)
+        ) : (
+          <>
         <PreviewCard name={names[0]!} text={t("שילוב סימולציות בכל מפגש למידה")} />
         <PreviewCard name={names[1]!} text={t("שקיפות מלאה מול הלקוח")} />
         {participation.allow_image && (
@@ -102,11 +112,43 @@ export function EditorPreview({ title, subtitle, appearance, participation }: Pr
             <div style={{ fontSize: "clamp(8px,.9vw,11px)", fontWeight: "var(--weight-bold)", color: "var(--neutral-950)" }}>{names[2]}</div>
           </div>
         )}
+          </>
+        )}
       </div>
 
       {appearance.show_org_logo && (
         <div style={{ position: "absolute", bottom: "3.5%", insetInlineStart: "4.5%", background: "rgba(255,255,255,.9)", borderRadius: "var(--radius-md)", padding: "4px 8px" }}>
           <Image src="/brand/ngg-logo.png" alt="NGG" width={40} height={12} style={{ height: 12, width: "auto" }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One of the board's own opening posts, as it will appear on the wall. */
+function SeedPreviewCard({ post, facilitatorLabel }: { post: BoardSeedPost; facilitatorLabel: string }) {
+  const videoId = post.type === "video" && post.media_url ? parseYouTubeVideoId(post.media_url) : null;
+  return (
+    <div style={{ flex: 1, minWidth: 0, background: "rgba(255,255,255,.95)", borderRadius: "var(--radius-lg)", padding: "3% 3.5%", display: "flex", flexDirection: "column", gap: 5, boxShadow: "0 2px 8px rgba(8,8,16,.10)", border: post.pinned ? "1.5px solid var(--magenta-400)" : undefined }}>
+      {post.type === "image" && post.media_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={post.media_url} alt="" style={{ width: "100%", height: 40, objectFit: "cover", borderRadius: "var(--radius-md)" }} />
+      )}
+      {videoId && (
+        <div style={{ position: "relative", width: "100%", height: 40, borderRadius: "var(--radius-md)", overflow: "hidden", background: "#08080f" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={youTubeThumbnailUrl(videoId)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.9 }} />
+          <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+            <IconPlay size={14} />
+          </span>
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontSize: "clamp(7px,.8vw,10px)", fontWeight: "var(--weight-bold)", color: "var(--magenta-700)", background: "var(--magenta-50)", padding: "1px 6px", borderRadius: "var(--radius-pill)" }}>{facilitatorLabel}</span>
+      </div>
+      {post.text.trim() && (
+        <div style={{ fontSize: "clamp(8px,.95vw,12px)", color: "var(--neutral-800)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+          {post.text}
         </div>
       )}
     </div>

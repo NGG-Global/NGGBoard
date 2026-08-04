@@ -5,6 +5,7 @@ import type {
   LiveRoom,
   ModerationAction,
   Organization,
+  SubmissionComment,
   ParticipantSession,
   Profile,
   Submission,
@@ -21,6 +22,7 @@ export interface Database {
   participants: ParticipantSession[];
   activity: ActivityEvent[];
   moderation: ModerationAction[];
+  comments: SubmissionComment[];
 }
 
 const ORG_ID = "org_ngg";
@@ -45,6 +47,7 @@ function defaultParticipation(overrides: Partial<Board["participation"]> = {}): 
     image_size_limit_mb: DEFAULT_IMAGE_SIZE_LIMIT_MB,
     allow_participant_edit: false,
     allow_participant_delete: true,
+    allow_participant_comments: false,
     ...overrides,
   };
 }
@@ -113,6 +116,7 @@ export function buildSeed(): Database {
       internal_name: "סדנת חדשנות — הנהלה 2026",
       public_title: "קיר רעיונות — סדנת חדשנות 2026",
       public_subtitle: "איזה רעיון אחד תרצו שנאמץ כבר השנה?",
+      instructions: "",
       internal_description: "מפגש פתיחה לסדנת החדשנות של ההנהלה הבכירה.",
       status: "ready",
       appearance: appearance({ background_theme: "ink", client_logo_url: null }),
@@ -122,6 +126,7 @@ export function buildSeed(): Database {
       default_layout: "wall",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["חדשנות", "הנהלה"],
       folder: "סדנאות",
       collaborator_ids: ["user_yoav"],
@@ -137,6 +142,7 @@ export function buildSeed(): Database {
       internal_name: "שאלות ותשובות — כנס לקוחות",
       public_title: "שאלות ותשובות — כנס לקוחות",
       public_subtitle: "מה תרצו לשאול את הפאנל?",
+      instructions: "",
       internal_description: "לוח שאלות פתוח לכנס הלקוחות השנתי.",
       status: "ready",
       appearance: appearance({ background_theme: "soft" }),
@@ -146,6 +152,7 @@ export function buildSeed(): Database {
       default_layout: "feed",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["כנס", "לקוחות"],
       folder: "אירועים",
       collaborator_ids: [CURRENT_USER_ID],
@@ -161,6 +168,7 @@ export function buildSeed(): Database {
       internal_name: "רטרוספקטיבה — צוות פיתוח",
       public_title: "רטרוספקטיבה — מה נשמור ומה נשפר",
       public_subtitle: "מה עבד טוב ברבעון האחרון, ומה כדאי לשנות?",
+      instructions: "",
       internal_description: "",
       status: "draft",
       appearance: appearance({ background_theme: "light", card_style: "flat" }),
@@ -170,6 +178,7 @@ export function buildSeed(): Database {
       default_layout: "wall",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["רטרו"],
       folder: "צוות פיתוח",
       collaborator_ids: [],
@@ -179,12 +188,62 @@ export function buildSeed(): Database {
       last_activated_at: null,
     },
     {
+      id: "board_prework",
+      organization_id: ORG_ID,
+      created_by: CURRENT_USER_ID,
+      internal_name: "עבודה מקדימה — מנהלים חדשים",
+      public_title: "לפני שנפגשים — מה מאתגר אותך בניהול?",
+      public_subtitle: "שתפו אתגר אחד מהשבועות האחרונים",
+      instructions:
+        "לפני המפגש בשבוע הבא נבקש מכל אחת ואחד מכם לשתף אתגר ניהולי אמיתי מהתקופה האחרונה.\n" +
+        "אין צורך בניסוח מלוטש — כמה שורות מספיקות. אפשר גם תמונה או צילום מסך אם זה עוזר להמחיש.\n" +
+        "אנחנו נבנה מהשיתופים שלכם את התרגול במפגש עצמו, כך שמה שתעלו כאן הוא החומר שנעבוד עליו.",
+      internal_description: "איסוף מקדים לקראת מפגש 3 בתוכנית מנהלים חדשים.",
+      status: "ready",
+      appearance: appearance({ background_theme: "light" }),
+      participation: defaultParticipation({ name_policy: "optional", allow_youtube: false }),
+      moderation: defaultModeration({ mode: "approval" }),
+      sharing: "selected",
+      default_layout: "wall",
+      default_sort: "oldest",
+      zones: [],
+      // Opening content the facilitator wrote while building the board. Copied
+      // into every room this board activates, so the board is never empty when
+      // the first participant arrives.
+      seed_posts: [
+        {
+          id: "sp_frame",
+          type: "text",
+          text: "אתגר טוב לשיתוף הוא כזה שעוד לא פתרתם. מה שמסתדר מעצמו פחות מעניין אותנו כאן.",
+          media_url: null,
+          zone_id: null,
+          pinned: true,
+        },
+        {
+          id: "sp_example",
+          type: "text",
+          text: "דוגמה: \"עובדת מוכשרת שמסרבת לקחת אחריות על פרויקט, ואני לא מבין אם זה חוסר ביטחון או חוסר עניין.\"",
+          media_url: null,
+          zone_id: null,
+          pinned: false,
+        },
+      ],
+      tags: ["מנהלים", "עבודה מקדימה"],
+      folder: "סדנאות",
+      collaborator_ids: ["user_dana"],
+      created_at: iso(11 * DAY),
+      updated_at: iso(6 * DAY),
+      archived_at: null,
+      last_activated_at: iso(6 * DAY),
+    },
+    {
       id: "board_photowall",
       organization_id: ORG_ID,
       created_by: "user_yoav",
       internal_name: "קיר תמונות — יום גיבוש",
       public_title: "קיר תמונות — יום גיבוש 2025",
       public_subtitle: "שתפו רגע אחד בלתי נשכח מהיום",
+      instructions: "",
       internal_description: "",
       status: "archived",
       appearance: appearance({ background_theme: "metal" }),
@@ -194,6 +253,7 @@ export function buildSeed(): Database {
       default_layout: "mosaic",
       default_sort: "newest",
       zones: [],
+      seed_posts: [],
       tags: ["גיבוש"],
       folder: "אירועים",
       collaborator_ids: [],
@@ -212,6 +272,8 @@ export function buildSeed(): Database {
     public_id: "r-8fk2p9qd3m7x",
     room_code: "739428",
     session_label: "קבוצת בוקר",
+    mode: "live",
+    closes_at: null,
     status: "active",
     layout: "wall",
     focused_submission_id: "sub_3",
@@ -233,6 +295,8 @@ export function buildSeed(): Database {
     public_id: "r-past0001qa",
     room_code: "204815",
     session_label: "מושב אחר הצהריים",
+    mode: "live",
+    closes_at: null,
     status: "ended",
     layout: "feed",
     focused_submission_id: null,
@@ -246,7 +310,38 @@ export function buildSeed(): Database {
     created_at: iso(9 * DAY),
   };
 
-  const rooms: LiveRoom[] = [activeRoom, endedRoom];
+  // An open collection window: opened a week ago, still accepting, closes in
+  // three days. Idle for over a day — which must NOT suspend it (that is the
+  // whole point of `mode: "open"`).
+  const openRoom: LiveRoom = {
+    id: "room_open",
+    board_id: "board_prework",
+    organization_id: ORG_ID,
+    public_id: "r-prework24kb",
+    room_code: "518073",
+    session_label: "מחזור אביב",
+    mode: "open",
+    // End of day, three days out — the shape the facilitator's date picker
+    // produces, so the demo shows the deadline the way a real one reads.
+    closes_at: (() => {
+      const d = new Date(now + 3 * DAY);
+      d.setHours(23, 59, 0, 0);
+      return d.toISOString();
+    })(),
+    status: "active",
+    layout: "wall",
+    focused_submission_id: null,
+    qr_overlay_visible: false,
+    facilitator_ids: [CURRENT_USER_ID],
+    participant_count: 4,
+    started_at: iso(6 * DAY),
+    ended_at: null,
+    last_activity_at: iso(26 * HOUR),
+    created_by: CURRENT_USER_ID,
+    created_at: iso(6 * DAY),
+  };
+
+  const rooms: LiveRoom[] = [activeRoom, openRoom, endedRoom];
 
   const P = (label: string) => `part_${label}`;
   const participants: ParticipantSession[] = [
@@ -255,6 +350,11 @@ export function buildSeed(): Database {
     { id: P("michal"), room_id: "room_active", display_name: "מיכל אדר", created_at: iso(34 * MIN), last_seen_at: iso(5 * MIN) },
     { id: P("anon1"), room_id: "room_active", display_name: null, created_at: iso(30 * MIN), last_seen_at: iso(6 * MIN) },
     { id: P("ron"), room_id: "room_active", display_name: "רון שגב", created_at: iso(25 * MIN), last_seen_at: iso(8 * MIN) },
+    // Open collection: contributions spread across days, not minutes.
+    { id: P("tamar"), room_id: "room_open", display_name: "תמר כהן", created_at: iso(5 * DAY), last_seen_at: iso(5 * DAY) },
+    { id: P("eyal"), room_id: "room_open", display_name: "אייל מזרחי", created_at: iso(4 * DAY), last_seen_at: iso(4 * DAY) },
+    { id: P("shira"), room_id: "room_open", display_name: "שירה אלון", created_at: iso(2 * DAY), last_seen_at: iso(2 * DAY) },
+    { id: P("anon2"), room_id: "room_open", display_name: null, created_at: iso(26 * HOUR), last_seen_at: iso(26 * HOUR) },
   ];
 
   const mkSub = (
@@ -270,6 +370,7 @@ export function buildSeed(): Database {
       text_content: null,
       media_url: null,
       zone_id: null,
+      author_profile_id: null,
       display_name: null,
       anonymous: false,
       status: "published",
@@ -339,6 +440,86 @@ export function buildSeed(): Database {
     }),
   ];
 
+  // Open-collection submissions — days apart, one still awaiting approval
+  // (the board collects in approval mode, as an unattended board should).
+  const openSub = (
+    id: string,
+    over: Partial<Submission> & Pick<Submission, "participant_session_id"> & { agoMs: number },
+  ): Submission => ({ ...mkSub(id, over), room_id: "room_open" });
+
+  submissions.push(
+    openSub("sub_o1", {
+      participant_session_id: P("tamar"),
+      text_content: "העברתי צוות לעבודה היברידית ואני לא מצליחה לשמור על תחושת שייכות. הפגישות יעילות אבל קרות.",
+      display_name: "תמר כהן",
+      agoMs: 5 * DAY,
+    }),
+    openSub("sub_o2", {
+      participant_session_id: P("eyal"),
+      text_content: "עובד ותיק שמתנגד לכל שינוי בתהליך. אני לא רוצה לאבד אותו אבל הוא מעכב את כל הצוות.",
+      display_name: "אייל מזרחי",
+      agoMs: 4 * DAY,
+    }),
+    openSub("sub_o3", {
+      participant_session_id: P("shira"),
+      text_content: "קיבלתי צוות אחרי מנהל אהוד מאוד, ואני מרגישה שכל החלטה שלי נמדדת מולו.",
+      display_name: "שירה אלון",
+      agoMs: 2 * DAY,
+    }),
+    openSub("sub_o4", {
+      participant_session_id: P("anon2"),
+      text_content: "אני נמנע משיחות משמעת. יודע שזה הכרחי ופשוט דוחה את זה שוב ושוב.",
+      display_name: null,
+      anonymous: true,
+      status: "pending",
+      agoMs: 26 * HOUR,
+    }),
+  );
+
+  // The prework board's seed posts as they exist inside its open room. Written
+  // out here because this room is constructed directly rather than through
+  // activateRoom(), which is what materializes them in the running app.
+  const facilitatorPost = (id: string, text: string, pinned: boolean, agoMs: number): Submission => ({
+    id,
+    room_id: "room_open",
+    organization_id: ORG_ID,
+    type: "text",
+    text_content: text,
+    media_url: null,
+    zone_id: null,
+    participant_session_id: null,
+    author_profile_id: CURRENT_USER_ID,
+    display_name: "דור ואנונו",
+    anonymous: false,
+    status: "published",
+    pinned,
+    created_at: iso(agoMs),
+    updated_at: iso(agoMs),
+  });
+
+  submissions.push(
+    facilitatorPost("sub_seed1", "אתגר טוב לשיתוף הוא כזה שעוד לא פתרתם. מה שמסתדר מעצמו פחות מעניין אותנו כאן.", true, 6 * DAY),
+    facilitatorPost("sub_seed2", 'דוגמה: "עובדת מוכשרת שמסרבת לקחת אחריות על פרויקט, ואני לא מבין אם זה חוסר ביטחון או חוסר עניין."', false, 6 * DAY),
+  );
+
+  // A facilitator reply on a participant's contribution — the second feature.
+  const comments: SubmissionComment[] = [
+    {
+      id: "cmt_1",
+      submission_id: "sub_o1",
+      room_id: "room_open",
+      organization_id: ORG_ID,
+      body: "תודה תמר. זה בדיוק סוג האתגר שנפתח איתו את המפגש — נעבוד עליו בקבוצה.",
+      author_profile_id: CURRENT_USER_ID,
+      participant_session_id: null,
+      display_name: "דור ואנונו",
+      anonymous: false,
+      status: "published",
+      created_at: iso(4 * DAY),
+      updated_at: iso(4 * DAY),
+    },
+  ];
+
   const activity: ActivityEvent[] = [
     { id: "act_1", room_id: "room_active", type: "room_activated", actor_id: CURRENT_USER_ID, meaningful: true, created_at: iso(42 * MIN) },
     { id: "act_2", room_id: "room_active", type: "submission_created", actor_id: null, meaningful: true, created_at: iso(25 * MIN) },
@@ -355,5 +536,5 @@ export function buildSeed(): Database {
     { id: "folder_dev", organization_id: ORG_ID, name: "צוות פיתוח", sort: 2, created_at: iso(30 * DAY) },
   ];
 
-  return { organizations: [org], profiles, folders, boards, rooms, submissions, participants, activity, moderation };
+  return { organizations: [org], profiles, folders, boards, rooms, submissions, participants, activity, moderation, comments };
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { db } from "@/lib/data";
 import { INACTIVITY_SUSPEND_MS, INACTIVITY_WARNING_MS } from "@/lib/constants";
+import { accruesIdleTime } from "@/lib/rooms";
 import type { LiveRoom } from "@/lib/types";
 
 export interface InactivityState {
@@ -14,11 +15,16 @@ export interface InactivityState {
 /**
  * Watches a room's server-side `last_activity_at`. Every 10s it:
  *  - recomputes idle time (drives the 25-minute facilitator warning), and
- *  - asks the DB to auto-suspend once past 30 minutes.
+ *  - asks the DB to apply whatever the room's lifecycle is due for.
  *
  * Because suspension is derived from a stored timestamp (not an open tab), it
  * behaves correctly even if the facilitator's tab was closed and reopened.
  * On Supabase this same check moves to an edge function / scheduled task.
+ *
+ * Open collections never accrue idle time — see `accruesIdleTime` — so they
+ * report a quiet state here and are only ever closed by their deadline. The
+ * `checkAndApplyInactivity` call still runs for them, because that is what
+ * applies the deadline.
  */
 export function useInactivityMonitor(room: LiveRoom | null): InactivityState {
   const [state, setState] = useState<InactivityState>({ idleMs: 0, warning: false, minutesUntilSuspend: 30 });
@@ -28,12 +34,12 @@ export function useInactivityMonitor(room: LiveRoom | null): InactivityState {
     const evaluate = () => {
       const current = db.getRoom(room.id);
       if (!current) return;
-      // Only active/paused rooms accrue idle time.
-      if (current.status !== "active" && current.status !== "paused") {
+      db.checkAndApplyInactivity(current.id);
+      // Only live active/paused rooms accrue idle time.
+      if (!accruesIdleTime(current)) {
         setState({ idleMs: 0, warning: false, minutesUntilSuspend: 30 });
         return;
       }
-      db.checkAndApplyInactivity(current.id);
       const idle = Date.now() - new Date(current.last_activity_at).getTime();
       setState({
         idleMs: idle,

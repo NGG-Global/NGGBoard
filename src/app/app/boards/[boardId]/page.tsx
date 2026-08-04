@@ -7,8 +7,10 @@ import { db, CURRENT_USER_ID } from "@/lib/data";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatAgo } from "@/lib/utils";
 import { THEME_VISUALS } from "@/lib/board-visuals";
+import { isOpenRoom } from "@/lib/rooms";
 import type { NamePolicy, SharingLevel } from "@/lib/types";
 import { AppShell } from "@/components/app/AppShell";
+import { CollectionPanel } from "@/components/app/CollectionPanel";
 import { EditorPreview } from "@/components/app/editor/EditorPreview";
 import { RoomActivationDialog } from "@/components/app/RoomActivationDialog";
 import { SessionHistoryTable } from "@/components/app/SessionHistoryTable";
@@ -63,7 +65,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(280px, 1fr)", gap: 24, alignItems: "start" }} className="ngg-detail-grid">
           {/* Left: preview + sessions */}
           <div style={{ display: "flex", flexDirection: "column", gap: 22, minWidth: 0 }}>
-            <EditorPreview title={board.public_title} subtitle={board.public_subtitle} appearance={board.appearance} participation={board.participation} layout={board.default_layout} />
+            <EditorPreview title={board.public_title} subtitle={board.public_subtitle} appearance={board.appearance} participation={board.participation} layout={board.default_layout} seedPosts={board.seed_posts} />
 
             <section>
               <h2 style={{ fontSize: "var(--text-md)", fontWeight: "var(--weight-extrabold)", marginBottom: 12 }}>{t("היסטוריית מפגשים")}</h2>
@@ -84,7 +86,9 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
               )}
             </div>
 
-            {activeRoom ? (
+            {activeRoom && isOpenRoom(activeRoom) ? (
+              <CollectionPanel board={board} room={activeRoom} />
+            ) : activeRoom ? (
               <div style={{ background: "var(--accent-soft)", border: "1.5px solid var(--magenta-400)", borderRadius: "var(--radius-xl)", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", color: "var(--accent-text)" }}>{t("יש חדר פעיל ללוח זה")}</div>
                 <Button variant="primary" block leadingIcon={<IconMonitor size={16} />} onClick={() => router.push(`/app/rooms/${activeRoom.id}/control`)}>
@@ -96,7 +100,7 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
               </div>
             ) : (
               <Button variant="primary" size="lg" block disabled={!ready} onClick={() => setActivateOpen(true)}>
-                {ready ? t("הפעל חדר חי") : t("השלימו את הלוח כדי להפעיל")}
+                {ready ? t("הפעלת הלוח") : t("השלימו את הלוח כדי להפעיל")}
               </Button>
             )}
 
