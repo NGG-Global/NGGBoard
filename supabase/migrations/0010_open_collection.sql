@@ -10,6 +10,8 @@
 --            nullable participant_session_id and submissions.author_profile_id
 --            so a post can belong to a facilitator rather than a participant).
 --   PART 3 — replies on posts (submission_comments + the create_comment RPC).
+--   PART 4 — a participant can remove their own post, which is what makes a
+--            mistake recoverable on a single-submission board.
 --
 -- ============================================================================
 -- PART 1 — OPEN COLLECTION BOARDS
@@ -444,6 +446,61 @@ begin
 end $$;
 
 alter table submission_comments replica identity full;
+
+-- ============================================================================
+-- PART 4 — A PARTICIPANT REMOVES THEIR OWN POST
+--
+-- `participation.allow_participant_delete` has existed since the first schema
+-- and defaulted to true, but nothing ever honoured it: the board was configured
+-- to let a participant take their own post down and neither the app nor the
+-- database offered any way to do it. On a single-submission board that meant one
+-- mistyped answer ended that person's participation.
+--
+-- anon has no UPDATE on submissions, so this is a SECURITY DEFINER RPC that
+-- re-checks ownership rather than trusting the caller.
+-- ============================================================================
+
+create or replace function delete_own_submission(p_id uuid, p_public_id text, p_session_id uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare
+  v_room live_rooms%rowtype; v_board boards%rowtype; v_sub submissions%rowtype;
+  v_part jsonb;
+begin
+  select * into v_room from live_rooms where public_id = p_public_id;
+  if not found then raise exception 'room_not_found'; end if;
+  -- Only while the board still accepts content: removing a post on a closed
+  -- board would leave the person with no way to replace it.
+  if v_room.status <> 'active' then raise exception 'room_not_accepting'; end if;
+  if v_room.mode = 'open' and v_room.closes_at is not null and now() >= v_room.closes_at then
+    raise exception 'collection_closed';
+  end if;
+
+  select * into v_sub from submissions where id = p_id;
+  if not found or v_sub.room_id <> v_room.id then raise exception 'submission_not_available'; end if;
+  -- The ownership check. A facilitator post has a NULL session id, so this also
+  -- stops a participant removing the board's opening content.
+  if v_sub.participant_session_id is null or v_sub.participant_session_id <> p_session_id then
+    raise exception 'not_your_submission';
+  end if;
+
+  select * into v_board from boards where id = v_room.board_id;
+  v_part := coalesce(v_board.participation, '{}'::jsonb);
+  -- Fail-open, matching the other participation checks in create_submission:
+  -- the app's default for this flag is TRUE, so an absent key means allowed.
+  if v_part ? 'allow_participant_delete' and (v_part->>'allow_participant_delete') = 'false' then
+    raise exception 'delete_not_allowed';
+  end if;
+
+  update submissions set status = 'deleted' where id = p_id;
+  -- Replies go with the post, same as facilitator deletion.
+  update submission_comments set status = 'deleted' where submission_id = p_id and status <> 'deleted';
+  update live_rooms set focused_submission_id = null
+    where id = v_room.id and focused_submission_id = p_id;
+  insert into activity_events (room_id, type, meaningful) values (v_room.id, 'facilitator_action', false);
+  return true;
+end; $$;
+
+grant execute on function delete_own_submission(uuid, text, uuid) to anon;
 
 -- ============================================================================
 -- The participant-facing view, re-created last so it sees every column added

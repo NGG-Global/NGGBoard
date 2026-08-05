@@ -335,6 +335,78 @@ describe("board opening content", () => {
   });
 });
 
+describe("a participant recovering from a mistake", () => {
+  function singleSubmissionBoard() {
+    db.updateBoard("board_innovation", {
+      participation: { ...db.getBoard("board_innovation")!.participation, multiple_submissions: false },
+    });
+    const room = db.activateRoom("board_innovation");
+    const part = db.joinRoom(room.public_id, "רון")!;
+    const sub = db.createSubmission({
+      roomId: room.id,
+      type: "text",
+      text: "תשובה שגויה",
+      participantSessionId: part.session.id,
+      displayName: "רון",
+      moderationMode: "immediate",
+    });
+    return { room, session: part.session.id, sub };
+  }
+
+  it("frees a single-submission board after removing the mistake", () => {
+    const { room, session, sub } = singleSubmissionBoard();
+    // Before: one post, so the participant screen is locked to "כבר שלחתם".
+    expect(db.listSubmissionsForParticipant(room.id, session)).toHaveLength(1);
+
+    expect(db.deleteOwnSubmission(sub.id, session)).toBe(true);
+
+    // After: nothing of theirs remains, so they can send again.
+    expect(db.listSubmissionsForParticipant(room.id, session)).toHaveLength(0);
+    expect(db.listSubmissions(room.id).find((s) => s.id === sub.id)).toBeUndefined();
+  });
+
+  it("refuses to remove someone else's post", () => {
+    const { room, sub } = singleSubmissionBoard();
+    const other = db.joinRoom(room.public_id, "מיכל")!;
+    expect(db.deleteOwnSubmission(sub.id, other.session.id)).toBe(false);
+    expect(db.listSubmissions(room.id).find((s) => s.id === sub.id)?.status).toBe("published");
+  });
+
+  it("refuses to remove the board's opening content", () => {
+    db.updateBoard("board_qa", {
+      seed_posts: [{ id: "sp1", type: "text", text: "הנחיה", media_url: null, zone_id: null, pinned: false }],
+    });
+    const room = db.activateRoom("board_qa");
+    const part = db.joinRoom(room.public_id, "יואב")!;
+    const opening = db.listSubmissions(room.id)[0]!;
+    // A facilitator post has no participant session, so no participant owns it.
+    expect(db.deleteOwnSubmission(opening.id, part.session.id)).toBe(false);
+    expect(db.listSubmissions(room.id)).toHaveLength(1);
+  });
+
+  it("honours a board that forbids participant deletion", () => {
+    const { session, sub } = singleSubmissionBoard();
+    db.updateBoard("board_innovation", {
+      participation: { ...db.getBoard("board_innovation")!.participation, allow_participant_delete: false },
+    });
+    expect(db.deleteOwnSubmission(sub.id, session)).toBe(false);
+  });
+
+  it("takes the post's replies down with it", () => {
+    const { session, sub } = singleSubmissionBoard();
+    db.createComment({ submissionId: sub.id, body: "תגובה", authorProfileId: CURRENT_USER_ID });
+    expect(db.listComments(sub.id)).toHaveLength(1);
+    db.deleteOwnSubmission(sub.id, session);
+    expect(db.listComments(sub.id)).toHaveLength(0);
+  });
+
+  it("is idempotent — removing twice is not an error the second time", () => {
+    const { session, sub } = singleSubmissionBoard();
+    expect(db.deleteOwnSubmission(sub.id, session)).toBe(true);
+    expect(db.deleteOwnSubmission(sub.id, session)).toBe(false);
+  });
+});
+
 describe("replies on posts", () => {
   function roomWithPost() {
     const room = db.activateRoom("board_innovation");

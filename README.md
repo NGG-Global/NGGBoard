@@ -73,6 +73,8 @@ An authenticated employee can:
     present from the moment the board opens
 15. ✅ **Reply** to posts — the facilitator always, participants when the board
     opts in
+16. ✅ See a **real error** when a submission is refused, instead of a false
+    success — and take back a mistake and send again
 
 Plus: login, dashboard with all views/search/filters, board detail, org admin
 overview, template gallery placeholder, and intentional empty / loading /
@@ -376,6 +378,60 @@ Any post on the board can be replied to (`submission_comments`).
   (no key at all) must not accept them — fail-open there would silently switch
   the feature on for every existing board.
 
+## When a participant's submission is refused
+
+Participant writes on the Supabase backend are optimistic: the row lands in the
+local cache and the RPC follows. Until this was fixed, an RPC rejection reached
+only `console.warn`, and `ParticipantFlow` called `onDone()` on a 350ms timer
+regardless — so a participant whose submission the server refused was still shown
+**"התוכן שלכם עלה על הלוח"**.
+
+`create_submission` has eight legitimate rejection paths (`invalid_session`,
+`rate_limited`, `already_submitted`, `blocked_word`, `room_not_accepting`,
+`text_too_long`, `*_not_allowed`, `invalid_video_url`) and every one of them
+produced a success screen. On an **approval-mode board this was worse than a
+silent drop**: the participant was told they were waiting for the facilitator
+while the facilitator's queue was empty, so neither side had a reason to suspect
+anything.
+
+Three compounding effects made it hit only *some* participants and made a mistake
+unrecoverable:
+
+1. **`joinRoom` was fire-and-forget too.** A refused join left the participant
+   holding a session id the server never created; from then on *every* submission
+   failed `invalid_session`, silently, for as long as they kept the page open.
+2. **The refused row was never rolled back.** It stayed in the client cache and
+   poisoned the client's own guards — `limitReached` counted it, and the
+   duplicate check refused to resend the same text. The client was refusing to
+   resend something the server never received.
+3. **`participation.allow_participant_delete` was read nowhere.** It has existed
+   since the first schema and defaults to **true**, so boards were configured to
+   let participants take their own post down while the UI never offered it. On a
+   single-submission board, one mistake ended that person's participation.
+
+What changed:
+
+- `src/lib/write-errors.ts` maps a Postgres exception to a reason and a plain
+  Hebrew message. Anything unrecognised becomes `unknown` rather than being
+  guessed at.
+- `SupabaseDB` tracks each participant write and exposes
+  **`awaitWrite(id)`** — resolves on acceptance, rejects with a `WriteFailure`.
+  On rejection it **rolls the optimistic row back** so nothing is left to trip
+  over. `LocalDB.awaitWrite` resolves immediately (its write already happened).
+- Every submit path awaits confirmation before showing the success screen, and
+  shows the real reason otherwise. `invalid_session` self-heals: the stored
+  session is cleared and the participant is returned to the join screen.
+- Joining waits for the server to acknowledge before storing the session and
+  advancing, so a refused join can no longer poison the whole visit.
+- Anonymous sessions are remembered in `localStorage` by the adapter. RLS gives
+  anon no read on `participant_sessions` and the cache dies on reload, so
+  previously a participant who refreshed always came back as a *new* person —
+  detached from what they had sent, and inflating `participant_count`.
+- **"טעיתי — הסרה ושליחה מחדש"** on the done and limit-reached screens, honouring
+  `allow_participant_delete` and backed by the `delete_own_submission` RPC
+  (part 4 of migration 0010), which re-checks ownership server-side. Removing
+  frees a single-submission board so the corrected answer can be sent.
+
 ## GIF & sticker submissions (Giphy)
 
 Participants can search and send GIFs / stickers from the Giphy library (a
@@ -480,6 +536,14 @@ watch URL.
 - [ ] Replies never appear on the projector
 - [ ] Deleting a post removes its replies
 
+**Refused submissions and recovery**
+- [ ] A refused submission shows the reason, not "התוכן שלכם עלה על הלוח"
+- [ ] The same text can be resent after a refusal (no phantom row blocking it)
+- [ ] A dead session returns the participant to the join screen with an explanation
+- [ ] A participant who refreshes keeps their identity and their sent items
+- [ ] "טעיתי — הסרה ושליחה מחדש" frees a single-submission board
+- [ ] A participant cannot remove someone else's post or the board's opening content
+
 **Projector display**
 - [ ] Card wall / mosaic / live feed all readable from a distance
 - [ ] Handles 1, 5, 20, 100 submissions (pagination cycles above one screen)
@@ -508,7 +572,11 @@ legacy rooms normalising to live mode), the board's opening content (copied into
 every activation, published despite approval mode, empty items skipped, excluded
 from contribution counts, and not duplicated when continuing a session), and
 replies (facilitator and participant authorship, thread ordering, deletion, and
-removal alongside their post).
+removal alongside their post), participant recovery (removing your own post
+frees a single-submission board; ownership and board-setting checks refuse
+otherwise), and the write-failure classifier in `src/lib/write-errors.test.ts`
+(every server reason recognised, network drops distinguished from content
+problems, unknown never guessed at).
 
 ---
 

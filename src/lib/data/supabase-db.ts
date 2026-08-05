@@ -25,6 +25,7 @@ import { getSupabase } from "@/lib/supabase";
 import { normalizeBoard } from "@/lib/board-visuals";
 import { accruesIdleTime, dueRoomStatus, isOpenRoom, normalizeRoom } from "@/lib/rooms";
 import { countsAsContribution, usableSeedPosts } from "@/lib/posts";
+import { reasonFromError, WriteFailure } from "@/lib/write-errors";
 import { realtime, type RealtimeScope, type RealtimeSignal } from "./realtime";
 import type { Database } from "./seed";
 
@@ -346,6 +347,63 @@ class SupabaseDB {
    */
   private upsertRoom(row: LiveRoom) {
     this.upsert(this.cache.rooms, normalizeRoom(row));
+  }
+
+  // ---- pending participant writes -------------------------------------------
+  //
+  // Writes here are optimistic: the row lands in the cache and the RPC follows.
+  // That is fine for a facilitator, whose writes are rarely refused and who sees
+  // the truth on the next realtime tick. For a participant it was actively
+  // harmful — every rejection path of `create_submission` (invalid_session,
+  // rate_limited, already_submitted, blocked_word, room_not_accepting, …) reached
+  // only console.warn, so the participant was shown a success screen for content
+  // the server never stored, and the un-rolled-back optimistic row then poisoned
+  // the client's own guards so they could not even resend it.
+  //
+  // Each participant write now registers a promise keyed by the row id. The UI
+  // awaits it before telling anyone the send worked.
+  private pending = new Map<string, Promise<void>>();
+
+  /**
+   * Resolves once the server has accepted the write that produced `id`, or
+   * rejects with a `WriteFailure`. Unknown ids resolve — a write this backend
+   * never tracked (or one already confirmed) is not a failure.
+   */
+  awaitWrite(id: string): Promise<void> {
+    return this.pending.get(id) ?? Promise.resolve();
+  }
+
+  /**
+   * Track an optimistic write. `rollback` undoes the cached row when the server
+   * refuses, so a refused write leaves no trace to trip over.
+   */
+  private track(
+    id: string,
+    // Supabase's query builder is a thenable, not a Promise, so accept the
+    // narrower contract rather than making every call site await it first.
+    send: PromiseLike<{ error: { message?: string; code?: string } | null }>,
+    rollback: () => void,
+  ): void {
+    const promise = Promise.resolve(send).then(
+      ({ error }) => {
+        this.pending.delete(id);
+        if (!error) return;
+        rollback();
+        const reason = reasonFromError(error);
+        console.warn("participant write refused", reason, error.message);
+        throw new WriteFailure(reason, error.message);
+      },
+      (err: unknown) => {
+        this.pending.delete(id);
+        rollback();
+        const reason = reasonFromError(err as { message?: string });
+        throw new WriteFailure(reason, err instanceof Error ? err.message : undefined);
+      },
+    );
+    // Nothing else awaits this promise, and an unhandled rejection would surface
+    // as a page error. The UI gets the rejection through awaitWrite().
+    promise.catch(() => {});
+    this.pending.set(id, promise);
   }
 
   // ---- org / profiles -------------------------------------------------------
@@ -755,11 +813,25 @@ class SupabaseDB {
       last_seen_at: new Date().toISOString(),
     };
     this.cache.participants.push(session);
+    this.rememberSession(session);
     const updated = this.patchRoomLocal(room.id, { participant_count: room.participant_count + 1 });
     this.signalRoom("participants", room.id);
     const sb = getSupabase();
-    void sb?.rpc("join_room", { p_public_id: publicId, p_display_name: session.display_name, p_session_id: sessionId })
-      .then(({ error }) => error && console.warn("join_room", error.message));
+    if (sb) {
+      this.track(
+        sessionId,
+        sb.rpc("join_room", { p_public_id: publicId, p_display_name: session.display_name, p_session_id: sessionId }),
+        () => {
+          // A join the server refused must not leave a session id behind: every
+          // later submission would fail `invalid_session` for as long as the
+          // participant kept the page open.
+          this.cache.participants = this.cache.participants.filter((x) => x.id !== sessionId);
+          this.forgetSession(sessionId);
+          this.patchRoomLocal(room.id, { participant_count: room.participant_count });
+          this.signalRoom("participants", room.id);
+        },
+      );
+    }
     return { room: updated, session };
   }
   private patchRoomLocal(id: string, patch: Partial<LiveRoom>): LiveRoom {
@@ -769,7 +841,52 @@ class SupabaseDB {
     return next;
   }
   getParticipant(id: string): ParticipantSession | null {
-    return this.cache.participants.find((p) => p.id === id) ?? null;
+    const cached = this.cache.participants.find((p) => p.id === id);
+    if (cached) return cached;
+    // Fall back to the sessions this browser created. RLS gives anon no read on
+    // participant_sessions, and the in-memory cache is gone after a reload, so
+    // this is the only way a returning participant keeps their identity. A stale
+    // id is self-correcting: the next write fails `invalid_session` and the UI
+    // re-joins.
+    const remembered = this.readRememberedSessions()[id];
+    if (remembered) {
+      this.cache.participants.push(remembered);
+      return remembered;
+    }
+    return null;
+  }
+
+  private static SESSION_STORE = "ngg_participant_sessions";
+
+  private readRememberedSessions(): Record<string, ParticipantSession> {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(window.localStorage.getItem(SupabaseDB.SESSION_STORE) ?? "{}") as Record<string, ParticipantSession>;
+    } catch {
+      return {};
+    }
+  }
+
+  private rememberSession(session: ParticipantSession): void {
+    if (typeof window === "undefined") return;
+    try {
+      const all = this.readRememberedSessions();
+      all[session.id] = session;
+      window.localStorage.setItem(SupabaseDB.SESSION_STORE, JSON.stringify(all));
+    } catch {
+      /* storage unavailable (private mode) — the in-memory cache still works */
+    }
+  }
+
+  private forgetSession(id: string): void {
+    if (typeof window === "undefined") return;
+    try {
+      const all = this.readRememberedSessions();
+      delete all[id];
+      window.localStorage.setItem(SupabaseDB.SESSION_STORE, JSON.stringify(all));
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Roster of participants who joined a room (authenticated read; RLS-scoped). */
@@ -909,8 +1026,9 @@ class SupabaseDB {
     if (byFacilitator) {
       void sb.from("submission_comments").insert(comment).then(({ error }) => error && console.warn("createComment", error.message));
     } else if (room) {
-      void sb
-        .rpc("create_comment", {
+      this.track(
+        comment.id,
+        sb.rpc("create_comment", {
           p_id: comment.id,
           p_public_id: room.public_id,
           p_session_id: input.participantSessionId,
@@ -918,8 +1036,12 @@ class SupabaseDB {
           p_body: body,
           p_anonymous: comment.anonymous,
           p_display_name: input.displayName ?? null,
-        })
-        .then(({ error }) => error && console.warn("create_comment", error.message));
+        }),
+        () => {
+          this.cache.comments = this.cache.comments.filter((x) => x.id !== comment.id);
+          this.signalRoom("comments", sub.room_id);
+        },
+      );
     }
     return comment;
   }
@@ -979,17 +1101,24 @@ class SupabaseDB {
       return submission;
     }
     if (sb && room) {
-      void sb.rpc("create_submission", {
-        p_id: id,
-        p_public_id: room.public_id,
-        p_session_id: input.participantSessionId,
-        p_type: input.type,
-        p_text: submission.text_content,
-        p_media_url: submission.media_url,
-        p_anonymous: submission.anonymous,
-        p_display_name: input.displayName ?? null,
-        p_zone_id: submission.zone_id,
-      }).then(({ error }) => error && console.warn("create_submission", error.message));
+      this.track(
+        id,
+        sb.rpc("create_submission", {
+          p_id: id,
+          p_public_id: room.public_id,
+          p_session_id: input.participantSessionId,
+          p_type: input.type,
+          p_text: submission.text_content,
+          p_media_url: submission.media_url,
+          p_anonymous: submission.anonymous,
+          p_display_name: input.displayName ?? null,
+          p_zone_id: submission.zone_id,
+        }),
+        () => {
+          this.cache.submissions = this.cache.submissions.filter((x) => x.id !== id);
+          this.signalRoom("submissions", input.roomId);
+        },
+      );
     }
     return submission;
   }
@@ -1011,6 +1140,39 @@ class SupabaseDB {
   restoreTo(id: string, status: SubmissionStatus): Submission | null {
     const sub = this.cache.submissions.find((s) => s.id === id);
     return sub ? this.applySubmission(sub, { status }) : null;
+  }
+
+  /**
+   * A participant removes something they sent. anon has no UPDATE on
+   * submissions, so this goes through a SECURITY DEFINER RPC that re-checks
+   * ownership and the board's `allow_participant_delete`.
+   */
+  deleteOwnSubmission(submissionId: string, sessionId: string): boolean {
+    const sub = this.cache.submissions.find((s) => s.id === submissionId);
+    if (!sub || sub.participant_session_id !== sessionId || sub.status === "deleted") return false;
+    const board = this.getBoardForRoom(sub.room_id);
+    if (board && !board.participation.allow_participant_delete) return false;
+    const room = this.cache.rooms.find((r) => r.id === sub.room_id);
+    const previous = sub.status;
+    this.applySubmission(sub, { status: "deleted" });
+    this.cache.comments = this.cache.comments.map((c) =>
+      c.submission_id === submissionId && c.status !== "deleted" ? { ...c, status: "deleted" as const } : c,
+    );
+    this.signalRoom("comments", sub.room_id);
+    const sb = getSupabase();
+    if (sb && room) {
+      this.track(
+        `del:${submissionId}`,
+        sb.rpc("delete_own_submission", { p_id: submissionId, p_public_id: room.public_id, p_session_id: sessionId }),
+        () => {
+          // Refused server-side — put it back rather than leave the participant
+          // believing they removed something that is still on the board.
+          const current = this.cache.submissions.find((s) => s.id === submissionId);
+          if (current) this.applySubmission(current, { status: previous });
+        },
+      );
+    }
+    return true;
   }
   private applySubmission(sub: Submission, patch: Partial<Submission>): Submission {
     const idx = this.cache.submissions.findIndex((s) => s.id === sub.id);

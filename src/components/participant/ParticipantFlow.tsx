@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import type { Board, BoardZone, LiveRoom, ParticipantSession } from "@/lib/types";
+import type { Board, BoardZone, LiveRoom, ParticipantSession, Submission } from "@/lib/types";
 import { db } from "@/lib/data";
 import { useLiveQuery, useMounted } from "@/lib/hooks";
 import { boardZones, isZoned } from "@/lib/board-visuals";
 import { deadlinePassed, formatDeadline, isOpenRoom } from "@/lib/rooms";
+import { needsRejoin, participantMessage, reasonFromError, WriteFailure } from "@/lib/write-errors";
 import { SUBMISSION_RATE_LIMIT_MS } from "@/lib/constants";
 import { findBlockedWord, sanitizeText } from "@/lib/utils";
 import { validateSubmissionText } from "@/lib/validation";
@@ -26,6 +27,28 @@ function sessionKey(publicId: string) {
   return `ngg_participant_${publicId}`;
 }
 
+/**
+ * Wait for the server to actually accept a participant write before treating it
+ * as sent, and turn a refusal into something the participant can read.
+ *
+ * Every submit path goes through this. Previously they called `onDone()` on a
+ * 350ms timer regardless of the outcome, so a refused submission — a dead
+ * session, a rate limit, a single-submission board, a blocked word, a room that
+ * had stopped accepting — still showed "התוכן שלכם עלה על הלוח". On an
+ * approval-mode board that was worse than a silent drop: the participant was
+ * told they were waiting for the facilitator while the facilitator's queue was
+ * empty, so neither side had any reason to suspect a problem.
+ */
+async function confirmSend(writeId: string): Promise<{ ok: true } | { ok: false; message: string; rejoin: boolean }> {
+  try {
+    await db.awaitWrite(writeId);
+    return { ok: true };
+  } catch (err) {
+    const reason = err instanceof WriteFailure ? err.reason : reasonFromError(err as { message?: string });
+    return { ok: false, message: participantMessage(reason), rejoin: needsRejoin(reason) };
+  }
+}
+
 export function ParticipantFlow({ publicId }: { publicId: string }) {
   const { t, lang } = useI18n();
   const mounted = useMounted();
@@ -40,6 +63,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
   const [online, setOnline] = useState(true);
   // Grace window: give the room a few seconds to load (a just-activated room
   // takes a moment to reach Supabase) before showing "not found".
@@ -111,6 +135,9 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   const selectedZone = zones.find((z) => z.id === zoneId) ?? null;
 
   const openBoard = isOpenRoom(room);
+  // Removing your own post only makes sense while the board is still accepting
+  // — otherwise you could remove something with no way to replace it.
+  const canUndo = board.participation.allow_participant_delete && room.status === "active";
   const deadline = formatDeadline(room.closes_at, lang === "he" ? "he-IL" : "en-GB");
   // An open board past its deadline goes read-only. Say so in those words —
   // "view-only mode" means nothing to someone who was sent a link and a date.
@@ -151,16 +178,44 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
     );
   }
 
-  function joinRoom() {
+  async function joinRoom() {
     if (board!.participation.name_policy === "required" && !name.trim()) {
       setNameError(t("יש להזין שם כדי להצטרף"));
       return;
     }
+    setJoining(true);
+    setNameError(null);
     const result = db.joinRoom(publicId, board!.participation.name_policy === "disabled" ? null : name);
-    if (!result) return;
+    if (!result) {
+      setJoining(false);
+      setNameError(t("לא הצלחנו להתחבר למפגש. בדקו את הקישור ונסו שוב."));
+      return;
+    }
+    // Wait for the server to acknowledge the join. A join that was refused used
+    // to leave the participant holding a session id the server never created —
+    // and every submission they made afterwards failed `invalid_session`
+    // silently, so nothing they sent ever reached the board.
+    const outcome = await confirmSend(result.session.id);
+    setJoining(false);
+    if (!outcome.ok) {
+      setNameError(outcome.message);
+      return;
+    }
     window.localStorage.setItem(sessionKey(publicId), result.session.id);
     setSessionId(result.session.id);
     setStep(isZoned(board!) ? "zone" : "choose");
+  }
+
+  /**
+   * A submission failed because the session is gone (the facilitator reset the
+   * session, or the original join never landed). Clear it and send them back to
+   * the join screen with an explanation, instead of leaving them sending into a
+   * void.
+   */
+  function forceRejoin() {
+    window.localStorage.removeItem(sessionKey(publicId));
+    setSessionId(null);
+    setStep("join");
   }
 
   const progress = step === "join" ? 0 : step === "zone" || step === "choose" ? 1 : step === "done" ? 3 : 2;
@@ -189,6 +244,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           nameError={nameError}
           onName={(v) => { setName(v); setNameError(null); }}
           onContinue={joinRoom}
+          busy={joining}
           participants={room.participant_count}
           openBoard={openBoard}
           deadline={deadline}
@@ -216,6 +272,10 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           board={board}
           openBoard={openBoard}
           deadline={deadline}
+          canUndo={canUndo}
+          sessionId={sessionId}
+          mySubs={mySubs}
+          onUndone={() => setStep(zoned ? "zone" : "choose")}
           onChangeZone={zoned ? () => setStep("zone") : undefined}
           onText={() => setStep("text")}
           onImage={() => setStep("image")}
@@ -233,6 +293,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           zone={selectedZone}
           onDone={() => setStep("done")}
           onBack={() => setStep("choose")}
+          onRejoin={forceRejoin}
         />
       )}
 
@@ -245,6 +306,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           zone={selectedZone}
           onDone={() => setStep("done")}
           onBack={() => setStep("choose")}
+          onRejoin={forceRejoin}
         />
       )}
 
@@ -257,6 +319,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           zone={selectedZone}
           onDone={() => setStep("done")}
           onBack={() => setStep("choose")}
+          onRejoin={forceRejoin}
         />
       )}
 
@@ -269,6 +332,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           zone={selectedZone}
           onDone={() => setStep("done")}
           onBack={() => setStep("choose")}
+          onRejoin={forceRejoin}
         />
       )}
 
@@ -280,6 +344,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
           publicId={publicId}
           openBoard={openBoard}
           deadline={deadline}
+          undo={canUndo && sessionId ? <UndoSendButton submissions={mySubs} sessionId={sessionId} onUndone={() => setStep(zoned ? "zone" : "choose")} /> : null}
         />
       )}
     </ParticipantShell>
@@ -288,7 +353,7 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
 
 // ---- steps ------------------------------------------------------------------
 
-function JoinStep({ board, name, nameError, onName, onContinue, openBoard, deadline }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; participants: number; openBoard?: boolean; deadline?: string | null }) {
+function JoinStep({ board, name, nameError, onName, onContinue, busy, openBoard, deadline }: { board: Board; name: string; nameError: string | null; onName: (v: string) => void; onContinue: () => void; busy?: boolean; participants: number; openBoard?: boolean; deadline?: string | null }) {
   const { t } = useI18n();
   const policy = board.participation.name_policy;
   return (
@@ -317,7 +382,13 @@ function JoinStep({ board, name, nameError, onName, onContinue, openBoard, deadl
             required={policy === "required"}
           />
         )}
-        <Button variant="primary" size="lg" block onClick={onContinue}>{t("המשך")}</Button>
+        <Button variant="primary" size="lg" block disabled={busy} onClick={onContinue}>
+          {busy ? <Spinner size={18} color="#fff" /> : t("המשך")}
+        </Button>
+        {/* The name field carries join errors too — it is the only field here. */}
+        {nameError && board.participation.name_policy === "disabled" && (
+          <div style={{ fontSize: "var(--text-xs)", color: "var(--danger)", fontWeight: "var(--weight-semibold)", textAlign: "center" }}>{nameError}</div>
+        )}
         {policy === "optional" && board.participation.anonymous_allowed && (
           <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center" }}>{t("אפשר גם בלי שם — התוכן יוצג כאנונימי")}</p>
         )}
@@ -394,12 +465,17 @@ function ZoneBanner({ zone, onChange }: { zone: BoardZone; onChange?: () => void
   );
 }
 
-function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, publicId, board, openBoard, deadline, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; publicId: string; board: Board; openBoard?: boolean; deadline?: string | null; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
+function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submittedCount, zone, publicId, board, openBoard, deadline, canUndo, sessionId, mySubs, onUndone, onChangeZone, onText, onImage, onGif, onVideo }: { canText: boolean; canImage: boolean; canGif: boolean; canVideo: boolean; limitReached: boolean; submittedCount: number; zone: BoardZone | null; publicId: string; board: Board; openBoard?: boolean; deadline?: string | null; canUndo: boolean; sessionId: string | null; mySubs: Submission[]; onUndone: () => void; onChangeZone?: () => void; onText: () => void; onImage: () => void; onGif: () => void; onVideo: () => void }) {
   const { t } = useI18n();
   if (limitReached) {
     return (
-      <StateCard icon={<IconCheck size={34} />} title={t("כבר שלחתם")} description={t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")}>
-        <div style={{ width: "100%", maxWidth: 320 }}>
+      <StateCard
+        icon={<IconCheck size={34} />}
+        title={t("כבר שלחתם")}
+        description={canUndo ? t("בלוח הזה אפשר לשלוח פעם אחת. אם טעיתם, אפשר להסיר ולשלוח מחדש.") : t("בלוח הזה אפשר לשלוח פעם אחת. תודה על ההשתתפות!")}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 320 }}>
+          {canUndo && sessionId && <UndoSendButton submissions={mySubs} sessionId={sessionId} onUndone={onUndone} />}
           <BoardViewLink publicId={publicId} />
         </div>
       </StateCard>
@@ -430,7 +506,7 @@ function ChooseStep({ canText, canImage, canGif, canVideo, limitReached, submitt
   );
 }
 
-function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack, onRejoin }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void; onRejoin: () => void }) {
   const { t } = useI18n();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -455,20 +531,22 @@ function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }:
       return setError(t("כבר שלחתם את התשובה הזו"));
     }
     setSubmitting(true);
-    setTimeout(() => {
-      db.createSubmission({
-        roomId: room.id,
-        type: "text",
-        text: clean,
-        participantSessionId: sessionId,
-        displayName,
-        anonymous: board.participation.anonymous_allowed && !displayName.trim(),
-        zoneId: zone?.id ?? null,
-        moderationMode: board.moderation.mode,
-      });
+    const created = db.createSubmission({
+      roomId: room.id,
+      type: "text",
+      text: clean,
+      participantSessionId: sessionId,
+      displayName,
+      anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+      zoneId: zone?.id ?? null,
+      moderationMode: board.moderation.mode,
+    });
+    void confirmSend(created.id).then((outcome) => {
       setSubmitting(false);
-      onDone();
-    }, 350);
+      if (outcome.ok) return onDone();
+      setError(outcome.message);
+      if (outcome.rejoin) onRejoin();
+    });
   }
 
   return (
@@ -499,31 +577,34 @@ function TextStep({ room, board, sessionId, displayName, zone, onDone, onBack }:
   );
 }
 
-function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack, onRejoin }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void; onRejoin: () => void }) {
   const { t } = useI18n();
   const [image, setImage] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const canSubmit = room.status === "active" && !!image && !submitting;
 
   function submit() {
     if (!image) return;
     setSubmitting(true);
-    setTimeout(() => {
-      db.createSubmission({
-        roomId: room.id,
-        type: "image",
-        mediaUrl: image,
-        text: caption.trim() || null,
-        participantSessionId: sessionId,
-        displayName,
-        anonymous: board.participation.anonymous_allowed && !displayName.trim(),
-        zoneId: zone?.id ?? null,
-        moderationMode: board.moderation.mode,
-      });
+    const created = db.createSubmission({
+      roomId: room.id,
+      type: "image",
+      mediaUrl: image,
+      text: caption.trim() || null,
+      participantSessionId: sessionId,
+      displayName,
+      anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+      zoneId: zone?.id ?? null,
+      moderationMode: board.moderation.mode,
+    });
+    void confirmSend(created.id).then((outcome) => {
       setSubmitting(false);
-      onDone();
-    }, 350);
+      if (outcome.ok) return onDone();
+      setError(outcome.message);
+      if (outcome.rejoin) onRejoin();
+    });
   }
 
   return (
@@ -535,6 +616,7 @@ function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }
       {image && (
         <Input label={t("כיתוב (אופציונלי)")} value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 120))} placeholder={t("הוסיפו כיתוב קצר")} />
       )}
+      {error && <div style={{ fontSize: "var(--text-2xs)", color: "var(--danger)", fontWeight: "var(--weight-semibold)" }}>{error}</div>}
       <StickyAction>
         <Button variant="primary" size="lg" block disabled={!canSubmit} onClick={submit}>
           {submitting ? <Spinner size={18} color="#fff" /> : room.status === "active" ? t("שלח תמונה") : t("קבלת התוכן מושהית")}
@@ -544,7 +626,7 @@ function ImageStep({ room, board, sessionId, displayName, zone, onDone, onBack }
   );
 }
 
-function GifStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+function GifStep({ room, board, sessionId, displayName, zone, onDone, onBack, onRejoin }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void; onRejoin: () => void }) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<GiphyPickerItem | null>(null);
   const [caption, setCaption] = useState("");
@@ -564,21 +646,23 @@ function GifStep({ room, board, sessionId, displayName, zone, onDone, onBack }: 
       return setError(t("כבר שלחתם את ה-GIF הזה"));
     }
     setSubmitting(true);
-    setTimeout(() => {
-      db.createSubmission({
-        roomId: room.id,
-        type: "image",
-        mediaUrl: selected.media_url,
-        text: caption.trim() || null,
-        participantSessionId: sessionId,
-        displayName,
-        anonymous: board.participation.anonymous_allowed && !displayName.trim(),
-        zoneId: zone?.id ?? null,
-        moderationMode: board.moderation.mode,
-      });
+    const created = db.createSubmission({
+      roomId: room.id,
+      type: "image",
+      mediaUrl: selected.media_url,
+      text: caption.trim() || null,
+      participantSessionId: sessionId,
+      displayName,
+      anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+      zoneId: zone?.id ?? null,
+      moderationMode: board.moderation.mode,
+    });
+    void confirmSend(created.id).then((outcome) => {
       setSubmitting(false);
-      onDone();
-    }, 350);
+      if (outcome.ok) return onDone();
+      setError(outcome.message);
+      if (outcome.rejoin) onRejoin();
+    });
   }
 
   return (
@@ -609,7 +693,7 @@ function GifStep({ room, board, sessionId, displayName, zone, onDone, onBack }: 
   );
 }
 
-function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void }) {
+function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack, onRejoin }: { room: LiveRoom; board: Board; sessionId: string; displayName: string; zone: BoardZone | null; onDone: () => void; onBack: () => void; onRejoin: () => void }) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<YouTubePickerItem | null>(null);
   const [caption, setCaption] = useState("");
@@ -630,21 +714,23 @@ function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack }
       return setError(t("כבר שלחתם את הסרטון הזה"));
     }
     setSubmitting(true);
-    setTimeout(() => {
-      db.createSubmission({
-        roomId: room.id,
-        type: "video",
-        mediaUrl,
-        text: caption.trim() || null,
-        participantSessionId: sessionId,
-        displayName,
-        anonymous: board.participation.anonymous_allowed && !displayName.trim(),
-        zoneId: zone?.id ?? null,
-        moderationMode: board.moderation.mode,
-      });
+    const created = db.createSubmission({
+      roomId: room.id,
+      type: "video",
+      mediaUrl,
+      text: caption.trim() || null,
+      participantSessionId: sessionId,
+      displayName,
+      anonymous: board.participation.anonymous_allowed && !displayName.trim(),
+      zoneId: zone?.id ?? null,
+      moderationMode: board.moderation.mode,
+    });
+    void confirmSend(created.id).then((outcome) => {
       setSubmitting(false);
-      onDone();
-    }, 350);
+      if (outcome.ok) return onDone();
+      setError(outcome.message);
+      if (outcome.rejoin) onRejoin();
+    });
   }
 
   return (
@@ -681,7 +767,7 @@ function VideoStep({ room, board, sessionId, displayName, zone, onDone, onBack }
   );
 }
 
-function DoneStep({ approval, allowMore, onAnother, publicId, openBoard, deadline }: { approval: boolean; allowMore: boolean; onAnother: () => void; publicId: string; openBoard?: boolean; deadline?: string | null }) {
+function DoneStep({ approval, allowMore, onAnother, publicId, openBoard, deadline, undo }: { approval: boolean; allowMore: boolean; onAnother: () => void; publicId: string; openBoard?: boolean; deadline?: string | null; undo?: React.ReactNode }) {
   const { t } = useI18n();
   return (
     <div className="ngg-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 24, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 20, alignItems: "center", textAlign: "center", padding: "36px 24px", marginTop: 10 }}>
@@ -722,6 +808,7 @@ function DoneStep({ approval, allowMore, onAnother, publicId, openBoard, deadlin
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 320 }}>
         {allowMore && <Button variant="primary" size="lg" block onClick={onAnother}>{t("שליחת תוכן נוסף")}</Button>}
+        {undo}
         <BoardViewLink publicId={publicId} />
       </div>
     </div>
@@ -833,6 +920,58 @@ function StateCard({ icon, title, description, children }: { icon: React.ReactNo
       <h2 style={{ fontSize: "var(--text-xl)", fontWeight: "var(--weight-extrabold)" }}>{title}</h2>
       <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", maxWidth: 320, lineHeight: "var(--leading-relaxed)" }}>{description}</p>
       {children}
+    </div>
+  );
+}
+
+/**
+ * "Remove what I sent" — the answer to a participant who made a mistake.
+ *
+ * This implements `participation.allow_participant_delete`, which has existed in
+ * the board model (defaulting to TRUE) since the first version and was read
+ * nowhere: the board was configured to let participants take their own post
+ * down, and the UI never offered it. On a single-submission board that meant one
+ * mistake ended their participation, because `limitReached` counts their posts
+ * and there was no way to reduce that count.
+ */
+function UndoSendButton({ submissions, sessionId, onUndone }: { submissions: Submission[]; sessionId: string; onUndone: () => void }) {
+  const { t } = useI18n();
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mine = submissions.filter((s) => s.participant_session_id === sessionId);
+  if (mine.length === 0) return null;
+
+  function undo() {
+    const removed = mine.every((s) => db.deleteOwnSubmission(s.id, sessionId));
+    if (!removed) {
+      setError(t("לא הצלחנו להסיר את התוכן. נסו שוב או פנו למנחה."));
+      return;
+    }
+    setConfirming(false);
+    onUndone();
+  }
+
+  if (!confirming) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+        <Button variant="secondary" size="md" block onClick={() => setConfirming(true)}>
+          {mine.length > 1 ? t("הסרת מה ששלחתי ושליחה מחדש") : t("טעיתי — הסרה ושליחה מחדש")}
+        </Button>
+        {error && <span style={{ fontSize: "var(--text-2xs)", color: "var(--danger)", fontWeight: "var(--weight-semibold)", textAlign: "center" }}>{error}</span>}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", background: "var(--warning-bg)", border: "1px solid var(--warning)", borderRadius: "var(--radius-lg)", padding: 12 }}>
+      <span style={{ fontSize: "var(--text-xs)", color: "var(--warning)", fontWeight: "var(--weight-semibold)", lineHeight: "var(--leading-relaxed)" }}>
+        {mine.length > 1
+          ? t("להסיר את {count} הפריטים ששלחתם ולהתחיל מחדש?", { count: mine.length })
+          : t("להסיר את מה ששלחתם ולהתחיל מחדש?")}
+      </span>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="primary" size="sm" block onClick={undo}>{t("כן, הסירו")}</Button>
+        <Button variant="ghost" size="sm" block onClick={() => setConfirming(false)}>{t("ביטול")}</Button>
+      </div>
     </div>
   );
 }
