@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Board, LiveRoom, Submission } from "@/lib/types";
 import { t as translate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/react";
@@ -32,9 +32,8 @@ interface Props {
   hideJoinChip?: boolean;
   /**
    * Guest reading mode — a participant opening the board on their own phone.
-   * The board becomes one continuous page that scrolls: every card is shown at
-   * a comfortable size, column counts follow the viewport instead of a
-   * projector's aspect ratio, pages never auto-cycle, and the full-screen
+   * The whole page scrolls instead of the content panel, columns follow the
+   * viewport instead of a projector's aspect ratio, and the full-screen
    * overlays (focus, QR, "session ended") are replaced by a small status strip
    * so they can't swallow the scroll or hide the content the guest came to read.
    */
@@ -47,18 +46,13 @@ interface Props {
   renderFooter?: (submission: Submission) => React.ReactNode;
 }
 
-function columnsFor(count: number): number {
-  if (count <= 2) return count || 1;
-  if (count <= 4) return 2;
-  if (count <= 9) return 3;
-  if (count <= 20) return 4;
-  return 5;
-}
-
-function pageSizeFor(layout: Board["default_layout"], count: number): number {
-  if (layout === "feed") return 9;
-  return count <= 20 ? count : 20; // wall/mosaic paginate above 20
-}
+/**
+ * Track width for the card grids. Cards sit in tracks of a fixed minimum
+ * instead of stretching to fill the row — with one or two submissions a plain
+ * `1fr` track blows a single card up to the full width of the screen, which is
+ * what made the shared board unreadable. Leftover tracks simply stay empty.
+ */
+const TRACK_MIN = { viewer: 260, shared: 340 } as const;
 
 export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip, viewer, renderFooter }: Props) {
   const { t } = useI18n();
@@ -93,42 +87,18 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
     return base;
   }, [submissions, board.default_sort]);
 
-  // Both interactive surfaces — the facilitator's control room and a guest
-  // reading the board on their phone — show every card and scroll. A passive
-  // projector keeps fitting one screen at a time and auto-cycles pages.
-  // `scrollable` gates the two behaviours.
-  const scrollable = !!facilitator || !!viewer;
+  // The passive shared screen — a projector with no one at its keyboard. It
+  // keeps the balanced wall composition and the full-screen overlays; the
+  // control room and the guest view get the plainer scrolling grid.
+  const projector = !facilitator && !viewer;
 
-  const pageSize = pageSizeFor(room.layout, ordered.length);
-  const pageCount = scrollable ? 1 : Math.max(1, Math.ceil(ordered.length / pageSize));
-  const [page, setPage] = useState(0);
-
-  // Auto-cycle pages when content overflows one screen (projector only; paused
-  // during focus mode). Never cycles when the view is scrollable.
-  useEffect(() => {
-    if (scrollable || focused || pageCount <= 1) {
-      setPage(0);
-      return;
-    }
-    const id = setInterval(() => setPage((p) => (p + 1) % pageCount), 12000);
-    return () => clearInterval(id);
-  }, [scrollable, focused, pageCount]);
-
-  // Clamp the page: if submissions were removed while parked on a high page,
-  // `page` can exceed the new range and slice to an empty screen until the next
-  // 12s tick. Fall back to page 0 rather than show a blank projector.
-  const safePage = page < pageCount ? page : 0;
-  const shown = scrollable ? ordered : ordered.slice(safePage * pageSize, safePage * pageSize + pageSize);
-  const cols = columnsFor(scrollable ? Math.min(ordered.length, 20) : shown.length);
-  // The guest view runs on anything from a narrow phone to a laptop, so its
-  // tracks are sized by CSS rather than by a count derived from the item total —
-  // one column on a phone, more as the width allows.
-  const gridColumns = viewer ? "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" : `repeat(${cols}, 1fr)`;
-  // Projector shrinks text as density rises so a full screen stays readable;
-  // the scrollable view keeps a comfortable fixed size and lets you scroll.
-  const densityScale = scrollable
-    ? baseScale * 0.95
-    : baseScale * (shown.length > 12 ? 0.82 : shown.length > 6 ? 0.92 : 1);
+  // Every surface scrolls. The board used to fit one screen at a time and
+  // auto-cycle pages, which hid content nobody could bring back; now the shared
+  // screen holds the whole session and is scrolled to reach the rest of it.
+  const gridColumns = `repeat(auto-fill, minmax(min(100%, ${viewer ? TRACK_MIN.viewer : TRACK_MIN.shared}px), 1fr))`;
+  // A comfortable, fixed card size on every surface: with scrolling there is no
+  // reason to shrink text to squeeze one more row onto the screen.
+  const cardScale = projector ? baseScale : baseScale * 0.95;
 
   const overlay = statusOverlay(room);
 
@@ -197,30 +167,32 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
         </div>
       )}
 
-      {/* Content area — the page scrolls in guest mode, the panel scrolls in the
-          control room, and a projector fits one screen at a time. */}
-      <div className={scrollable ? undefined : "ngg-no-scrollbar"} style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : scrollable ? "auto" : "hidden", overflowX: viewer ? "visible" : "hidden" }}>
+      {/* Content area — the page scrolls in guest mode, the panel scrolls on the
+          shared screen and in the control room. Everything sent is reachable. */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden" }}>
         {ordered.length === 0 && !zoned ? (
           <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
         ) : zoned ? (
-          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} scrollable={scrollable} viewer={viewer} renderFooter={renderFooter} />
+          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} projector={projector} viewer={viewer} renderFooter={renderFooter} />
         ) : room.layout === "mosaic" ? (
-          <div style={viewer ? { columnWidth: 260, columnGap: "clamp(12px, 1.4vw, 22px)" } : { columns: cols, columnGap: "clamp(12px, 1.4vw, 22px)", height: "100%", overflow: "hidden" }}>
-            {shown.map((s) => (
+          <div style={{ columnWidth: viewer ? TRACK_MIN.viewer : TRACK_MIN.shared, columnGap: "clamp(12px, 1.4vw, 22px)" }}>
+            {ordered.map((s) => (
               <div key={s.id} style={{ marginBottom: "clamp(12px, 1.4vw, 22px)", breakInside: "avoid" }}>
-                <DisplaySubmission submission={s} board={board} scale={densityScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+                <DisplaySubmission submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
               </div>
             ))}
           </div>
         ) : room.layout === "feed" ? (
-          <div style={{ display: "grid", gridTemplateColumns: viewer || shown.length <= 4 ? "1fr" : "1fr 1fr", gap: "clamp(12px, 1.4vw, 22px)", height: scrollable ? undefined : "100%", alignContent: "start" }}>
-            {shown.map((s, i) => (
-              <div key={s.id} style={{ gridColumn: !viewer && i === 0 && shown.length > 4 ? "1 / -1" : undefined }}>
-                <DisplaySubmission submission={s} board={board} scale={densityScale * (!viewer && i === 0 ? 1.15 : 1)} facilitator={facFor(s)} footer={renderFooter?.(s)} />
-              </div>
+          // A feed is one column by definition; on a wide screen it is capped and
+          // centered rather than stretched edge to edge.
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "clamp(12px, 1.4vw, 22px)", maxWidth: viewer ? undefined : 760, marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
+            {ordered.map((s) => (
+              <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
             ))}
           </div>
-        ) : scrollable ? (
+        ) : projector ? (
+          <BalancedWall items={ordered} board={board} scale={cardScale} facFor={facFor} />
+        ) : (
           <div
             style={{
               display: "grid",
@@ -230,31 +202,21 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
               alignContent: "start",
             }}
           >
-            {shown.map((s) => (
-              <DisplaySubmission key={s.id} submission={s} board={board} scale={densityScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+            {ordered.map((s) => (
+              <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
             ))}
           </div>
-        ) : (
-          <BalancedWall items={shown} board={board} scale={densityScale} facFor={facFor} />
         )}
       </div>
 
-      {/* Footer: org logo, page indicator, paused strip */}
-      <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: "clamp(10px, 1.6vh, 20px)", minHeight: 30 }}>
-        {board.appearance.show_org_logo && (
+      {/* Footer: org logo */}
+      {board.appearance.show_org_logo && (
+        <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: "clamp(10px, 1.6vh, 20px)", minHeight: 30 }}>
           <div style={{ background: v.dark ? "rgba(255,255,255,.9)" : "transparent", borderRadius: "var(--radius-md)", padding: v.dark ? "4px 8px" : 0 }}>
             <Image src="/brand/ngg-logo.png" alt="NGG" width={64} height={18} style={{ height: 18, width: "auto" }} />
           </div>
-        )}
-        <div style={{ flex: 1 }} />
-        {pageCount > 1 && !focused && !zoned && (
-          <div style={{ display: "flex", gap: 6 }} aria-hidden="true">
-            {Array.from({ length: pageCount }).map((_, i) => (
-              <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i === safePage ? "var(--accent)" : v.dark ? "rgba(255,255,255,.3)" : "rgba(8,8,16,.2)" }} />
-            ))}
-          </div>
-        )}
-      </footer>
+        </footer>
+      )}
 
       {/* Focus mode overlay — projector/control room only. A guest keeps their
           own place in the board instead of having the facilitator's highlight
@@ -314,19 +276,24 @@ function balancedColumns(n: number): number {
   return 5;
 }
 
-/** Ideal (pre-shrink) card width in px, sized to what the content warrants. */
+/**
+ * Ideal card width in px, sized to what the content warrants and capped well
+ * below the width of the screen — a single submission should read as a card on
+ * the board, not as a poster filling it.
+ */
 function idealCardWidth(s: Submission): number {
-  if (s.type !== "text" && s.media_url) return 480;
+  if (s.type !== "text" && s.media_url) return 420;
   const len = s.text_content?.length ?? 0;
-  return len <= 45 ? 340 : len <= 130 ? 460 : 580;
+  return len <= 45 ? 300 : len <= 130 ? 380 : 460;
 }
 
 /**
- * Projector wall: a balanced, centered composition instead of a stretched
+ * Shared-screen wall: a balanced, centered composition instead of a stretched
  * grid. Items split into rows whose sizes differ by at most one (a shorter
- * last row sits centered), the whole block is vertically centered, and each
- * card takes only the width/height its content warrants — a short quote stays
- * compact, media keeps a consistent frame, nothing balloons to fill a track.
+ * last row sits centered), the block is centered while it fits on one screen
+ * and grows into a scroll once it doesn't, and each card takes only the
+ * width/height its content warrants — a short quote stays compact, media keeps
+ * a consistent frame, nothing balloons to fill a track.
  */
 function BalancedWall({
   items,
@@ -352,18 +319,17 @@ function BalancedWall({
     rows.push(items.slice(idx, idx + size));
     idx += size;
   }
-  const dense = rowCount >= 4;
   const gap = "clamp(12px, 1.4vw, 22px)";
-  // A near-empty board still shouldn't produce billboard-sized cards; give the
-  // one-or-two-item case a little extra presence and cap it there.
-  const fewBoost = n <= 2 ? 1.2 : 1;
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap }}>
+    // minHeight rather than height: the composition centres itself on a
+    // half-empty board and grows past the screen — scrolled, not truncated —
+    // once the session fills it.
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap }}>
       {rows.map((row, ri) => (
         <div key={ri} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap, minHeight: 0 }}>
           {row.map((s) => (
-            <div key={s.id} style={{ flex: `0 1 ${Math.round(idealCardWidth(s) * fewBoost)}px`, minWidth: 0, display: "flex", justifyContent: "center" }}>
-              <DisplaySubmission submission={s} board={board} scale={scale} facilitator={facFor(s)} hug dense={dense} />
+            <div key={s.id} style={{ flex: `0 1 ${idealCardWidth(s)}px`, minWidth: 0, display: "flex", justifyContent: "center" }}>
+              <DisplaySubmission submission={s} board={board} scale={scale} facilitator={facFor(s)} hug />
             </div>
           ))}
         </div>
@@ -385,7 +351,7 @@ function ZonedContent({
   scale,
   dark,
   facFor,
-  scrollable,
+  projector,
   viewer,
   renderFooter,
 }: {
@@ -395,7 +361,7 @@ function ZonedContent({
   scale: number;
   dark: boolean;
   facFor: (s: Submission) => FacilitatorCardActions | undefined;
-  scrollable: boolean;
+  projector: boolean;
   viewer?: boolean;
   renderFooter?: (submission: Submission) => React.ReactNode;
 }) {
@@ -413,22 +379,27 @@ function ZonedContent({
   const zoneScale = viewer ? scale : scale * (zones.length >= 3 ? 0.8 : 0.9);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: viewer ? "1fr" : `repeat(${zones.length}, 1fr)`, gap: viewer ? 26 : "clamp(12px, 1.6vw, 26px)", height: viewer ? undefined : "100%" }}>
+    // An explicit 100% row (rather than the default content-sized one) is what
+    // keeps each column bounded by the screen — without it the columns simply
+    // grow to their tallest zone and the inner scrollers never engage.
+    <div style={{ display: "grid", gridTemplateColumns: viewer ? "1fr" : `repeat(${zones.length}, 1fr)`, gridTemplateRows: viewer ? undefined : "100%", gap: viewer ? 26 : "clamp(12px, 1.6vw, 26px)", height: viewer ? undefined : "100%" }}>
       {zones.map((z, i) => {
         const items = byZone.get(z.id) ?? [];
         return (
-          <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, height: viewer ? undefined : "100%", borderInlineStart: !viewer && i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: !viewer && i > 0 ? "clamp(8px, 1vw, 18px)" : 0 }}>
+          <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, height: viewer ? undefined : "100%", borderInlineStart: !viewer && i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: !viewer && i > 0 ? "clamp(8px, 1vw, 18px)" : 0 }}>
             <div style={{ flex: "none", paddingBottom: 10, marginBottom: 10, borderBottom: `2px solid ${divider}` }}>
               <div style={{ fontSize: viewer ? `clamp(16px, ${4 * scale}vw, ${22 * scale}px)` : `clamp(16px, ${1.4 * scale}vw, ${28 * scale}px)`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
                 {z.title || t("אזור {number}", { number: i + 1 })}
               </div>
               {z.subtitle && <div style={{ fontSize: viewer ? `clamp(12px, ${3 * scale}vw, ${15 * scale}px)` : `clamp(11px, ${0.9 * scale}vw, ${16 * scale}px)`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
             </div>
-            <div className={scrollable ? undefined : "ngg-no-scrollbar"} style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : scrollable ? "auto" : "hidden", overflowX: viewer ? "visible" : "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
+            {/* Each zone column scrolls on its own so a busy zone never truncates
+                its cards or pushes the quieter zones off the screen. */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
               {items.length === 0 ? (
                 <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
               ) : (
-                (scrollable ? items : items.slice(0, 12)).map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug={!viewer} dense={!viewer && zones.length >= 3} footer={renderFooter?.(s)} />)
+                items.map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug={!viewer} dense={projector && zones.length >= 3} footer={renderFooter?.(s)} />)
               )}
             </div>
           </div>
