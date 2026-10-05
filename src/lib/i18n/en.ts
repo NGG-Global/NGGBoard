@@ -351,6 +351,8 @@ export const EN: Record<string, string> = {
   "מחק לצמיתות": "Delete permanently",
   "מחק תיקייה": "Delete folder",
   "מייל או סיסמה שגויים": "Incorrect email or password",
+  "ניתן להתחבר רק עם כתובת מייל @nggconsult.com": "Only @nggconsult.com email addresses can sign in",
+  "יותר מדי ניסיונות. נסו שוב בעוד מספר דקות.": "Too many attempts. Please try again in a few minutes.",
   "מיכל אדר": "Michal Adar",
   "מילים חסומות (מופרדות בפסיק)": "Blocked words (comma-separated)",
   "ממתין": "Pending",
