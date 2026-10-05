@@ -27,13 +27,34 @@ Preview if you want preview deploys to hit Supabase too):
 | `NEXT_PUBLIC_APP_URL` | your Vercel URL, e.g. `https://ngg-boards.vercel.app` |
 | `GIPHY_API_KEY` | *your Giphy API key* (server-only secret — enables the participant GIF/sticker picker) |
 | `YOUTUBE_API_KEY` | *your YouTube Data API v3 key* (server-only secret — enables video search; link-paste works without it) |
+| `ORG_SHARED_PASSWORD` | *optional* — one password every `@nggconsult.com` address signs in with (server-only secret; see below) |
+| `SUPABASE_SERVICE_ROLE_KEY` | *only if `ORG_SHARED_PASSWORD` is set* — server-only secret |
 
 The four `NEXT_PUBLIC_*` entries are public client values (the anon key is
 designed to ship in the browser bundle). `GIPHY_API_KEY` is a **server-only
 secret**: it is read exclusively by the `/api/giphy` route and must not be
-renamed with a `NEXT_PUBLIC_` prefix. Do **not** add the Supabase service-role
-key here — it's only for the server-side inactivity sweep (Supabase Edge
-Function / pg_cron).
+renamed with a `NEXT_PUBLIC_` prefix. Add the Supabase service-role key
+**only** when you enable the shared password, and never with a `NEXT_PUBLIC_`
+prefix — it bypasses row-level security.
+
+### Shared organisation password (optional)
+
+With `ORG_SHARED_PASSWORD` set, the login screen accepts any `@nggconsult.com`
+address with that single password (`/api/auth/org-login`); the account is
+created on first sign-in. Run migration `0011_org_email_domain.sql` so the
+database also rejects any other domain. Be aware of the trade-offs:
+
+- Anyone holding the password can sign in **as any colleague**, including the
+  org admin, so activity logs no longer prove who acted.
+- Rotate it whenever someone leaves NGG or it may have been shared outside the
+  team; use a long random value (20+ characters).
+- The built-in attempt limiter is per server instance (best-effort). For
+  stronger brute-force protection add Vercel Firewall rate limiting on
+  `/api/auth/org-login`.
+- Optionally turn off **Authentication → Sign In / Providers → Allow new users
+  to sign up** so accounts are only created through this route.
+
+Leave `ORG_SHARED_PASSWORD` unset to keep per-user Supabase passwords.
 
 > To leave production on the safe local demo backend instead, set
 > `NEXT_PUBLIC_DATA_BACKEND=local` (or omit it).
@@ -51,7 +72,7 @@ In the Supabase dashboard → **Authentication → URL Configuration**:
 1. Click **Deploy**. First build takes ~1–2 minutes.
 2. Open the URL → you should land on the login screen (Supabase mode).
 3. Complete the four Supabase setup steps from the README's *Hooking up
-   Supabase* section (run migrations `0004` + `0005`, confirm the two tables are
+   Supabase* section (run migrations `0004`, `0005` and `0011`, confirm the two tables are
    in the `supabase_realtime` publication, confirm the signup email or enable
    auto-confirm).
 4. Sign up → create and activate a board → open the display and join from a
