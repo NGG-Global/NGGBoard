@@ -142,6 +142,17 @@ class LocalDB {
     return realtime.subscribe(scope, cb);
   }
 
+  /**
+   * Confirmation hook for participant writes, mirrored from the Supabase
+   * backend. Here the write already happened synchronously against
+   * localStorage, so there is nothing to wait for and nothing that can be
+   * refused after the fact.
+   */
+  awaitWrite(_id: string): Promise<void> {
+    void _id;
+    return Promise.resolve();
+  }
+
   // ---- org / profiles -------------------------------------------------------
 
   getOrganization() {
@@ -780,6 +791,30 @@ class LocalDB {
     if (meaningful) this.touchActivity(sub.room_id);
     this.commit({ kind: "submissions", roomId: sub.room_id });
     return next;
+  }
+
+  /**
+   * A participant removes something they sent. This is what makes a mistake
+   * recoverable: on a single-submission board, removing frees them to send
+   * again, because `listSubmissionsForParticipant` skips deleted rows.
+   *
+   * Ownership is checked here rather than trusted from the caller — the same
+   * check the server-side RPC makes.
+   */
+  deleteOwnSubmission(submissionId: string, sessionId: string): boolean {
+    const db = this.read();
+    const sub = db.submissions.find((s) => s.id === submissionId);
+    if (!sub || sub.participant_session_id !== sessionId || sub.status === "deleted") return false;
+    const board = this.getBoardForRoom(sub.room_id);
+    if (board && !board.participation.allow_participant_delete) return false;
+    this.setSubmission(submissionId, { status: "deleted" });
+    for (const c of db.comments) {
+      if (c.submission_id === submissionId && c.status !== "deleted") c.status = "deleted";
+    }
+    const room = this.getRoom(sub.room_id);
+    if (room?.focused_submission_id === submissionId) this.setFocus(sub.room_id, null);
+    this.commit({ kind: "submissions", roomId: sub.room_id });
+    return true;
   }
 
   /** Restore a soft-deleted or hidden submission back to published (undo). */
