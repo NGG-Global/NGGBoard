@@ -223,10 +223,10 @@ export function ParticipantFlow({ publicId }: { publicId: string }) {
   return (
     <ParticipantShell board={board} hero={step === "join" ? "full" : "compact"} progress={progress} participants={room.participant_count} openBoard={openBoard}>
       {!online && (
-        <Banner icon={<IconWifiOff size={16} />} color="warning">{t("אין חיבור לרשת — התוכן יישמר ויישלח כשהחיבור יחזור")}</Banner>
+        <Banner icon={<IconWifiOff size={16} />} color="warning">{t("אין חיבור לרשת — מה שכתבתם נשאר כאן, ואפשר לשלוח כשהחיבור יחזור")}</Banner>
       )}
       {room.status === "paused" && step !== "done" && (
-        <Banner icon={<IconClock size={16} />} color="warning">{t("המנחה השהה זמנית את קבלת התוכן. אפשר להכין תשובה — היא תישלח כשהקבלה תתחדש.")}</Banner>
+        <Banner icon={<IconClock size={16} />} color="warning">{t("המנחה השהה זמנית את קבלת התוכן. אפשר להכין תשובה ולשלוח אותה כשהקבלה תתחדש.")}</Banner>
       )}
       {room.status === "read_only" && step !== "done" && (
         <Banner icon={<IconWarning size={16} />} color="info">{t("הלוח במצב צפייה בלבד ואינו מקבל תוכן חדש כרגע.")}</Banner>

@@ -7,6 +7,12 @@ import { useI18n } from "@/lib/i18n/react";
 export interface QRCodeProps {
   value: string;
   size?: number;
+  /**
+   * On-screen size as any CSS length (e.g. "6em", "min(40vh, 460px)"), for a QR
+   * that should grow with the screen it is projected on. `size` then only sets
+   * the render resolution, so pass the largest size it will be shown at.
+   */
+  displaySize?: string;
   /** Foreground/background; defaults to brand ink on white for max scannability. */
   dark?: string;
   light?: string;
@@ -15,7 +21,8 @@ export interface QRCodeProps {
 }
 
 /** Renders a real, scannable QR code to a canvas via the `qrcode` library. */
-export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ffffff", className, style }: QRCodeProps) {
+export function QRCodeCanvas({ value, size = 180, displaySize, dark = "#15151f", light = "#ffffff", className, style }: QRCodeProps) {
+  const cssSize = displaySize ?? `${size}px`;
   const { t } = useI18n();
   const ref = useRef<HTMLCanvasElement>(null);
 
@@ -32,12 +39,12 @@ export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ff
         // `qrcode` overwrites the canvas inline width/height in px during render,
         // which — combined with the global `canvas { max-width: 100% }` reset —
         // can distort the QR into a rectangle. Re-assert a fixed square after.
-        canvas.style.width = `${size}px`;
-        canvas.style.height = `${size}px`;
+        canvas.style.width = cssSize;
+        canvas.style.height = cssSize;
         canvas.style.maxWidth = "none";
       })
       .catch((err) => console.warn("QR render failed", err));
-  }, [value, size, dark, light]);
+  }, [value, size, cssSize, dark, light]);
 
   return (
     <canvas
@@ -47,7 +54,7 @@ export function QRCodeCanvas({ value, size = 180, dark = "#15151f", light = "#ff
       role="img"
       aria-label={t("קוד QR להצטרפות: {value}", { value })}
       className={className}
-      style={{ width: size, height: size, maxWidth: "none", display: "block", borderRadius: "var(--radius-lg)", ...style }}
+      style={{ width: cssSize, height: cssSize, maxWidth: "none", display: "block", borderRadius: "var(--radius-lg)", ...style }}
     />
   );
 }

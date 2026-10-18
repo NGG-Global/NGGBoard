@@ -130,6 +130,22 @@
 }
 .ngg-drawer-handle:hover { background: var(--accent-hover) !important; }
 
+/* ---- Shared-screen sizing ------------------------------------------------
+   The projector and the control-room board size everything (cards, type,
+   QR, header) in `em` off one unit that follows the size of the board area,
+   so a 1280×720 projector and a 1920×1080 one show the same composition
+   instead of the larger screen leaving the cards huddled in the middle.
+   Bounded both ways: never under 15px (legible from the back of a room on a
+   low-res projector), never over 34px (a 4K screen keeps a sensible number of
+   cards per screen instead of needing a scroll). The `cq*` units measure the
+   board area itself (narrower while the control drawer is open); browsers
+   without container units keep the viewport-based line before it. */
+.ngg-stage { container-type: size; }
+.ngg-stage-type {
+  font-size: clamp(15px, min(1.05vw, 1.85vh), 34px);
+  font-size: clamp(15px, min(1.05cqw, 1.85cqh), 34px);
+}
+
 /* Utility: hide scrollbars on projector display */
 .ngg-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .ngg-no-scrollbar::-webkit-scrollbar { display: none; }

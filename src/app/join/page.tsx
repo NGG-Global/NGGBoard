@@ -41,7 +41,7 @@ export default function JoinByCodePage() {
       <div style={{ position: "absolute", top: 16, insetInlineEnd: 16 }}>
         <LanguageToggle />
       </div>
-      <Image src="/brand/ngg-logo.png" alt="NGG" width={92} height={30} style={{ height: 30, width: "auto" }} />
+      <Image src="/brand/ngg-logo.png" alt="NGG" width={104} height={104} style={{ height: 52, width: "auto" }} />
       <div style={{ textAlign: "center" }}>
         <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: "var(--weight-black)" }}>{t("הצטרפות למפגש")}</h1>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 6 }}>{t("הזינו את קוד החדר בן 6 הספרות שמופיע על המסך")}</p>

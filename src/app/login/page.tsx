@@ -64,7 +64,7 @@ export default function LoginPage() {
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "flex-start" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-            <Image src="/brand/ngg-logo.png" alt="NGG" width={92} height={30} style={{ height: 30, width: "auto" }} priority />
+            <Image src="/brand/ngg-logo.png" alt="NGG" width={104} height={104} style={{ height: 52, width: "auto" }} priority />
             <LanguageToggle />
           </div>
           <div>

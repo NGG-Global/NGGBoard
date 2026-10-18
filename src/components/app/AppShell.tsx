@@ -104,7 +104,7 @@ export function AppShell({
           </button>
         )}
         <Link href="/app/boards?view=all" aria-label={t("NGG Boards — דף הבית")} style={{ alignSelf: "flex-start", margin: "0 8px 22px" }}>
-          <Image src="/brand/ngg-logo.png" alt="NGG" width={80} height={26} style={{ height: 26, width: "auto" }} priority />
+          <Image src="/brand/ngg-logo.png" alt="NGG" width={88} height={88} style={{ height: 44, width: "auto" }} priority />
         </Link>
 
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }} aria-label={t("ניווט ראשי")}>
@@ -285,7 +285,7 @@ export function AppShell({
             >
               <IconMenu size={18} />
             </button>
-            <Image src="/brand/ngg-logo.png" alt="NGG" width={68} height={22} style={{ height: 22, width: "auto" }} />
+            <Image src="/brand/ngg-logo.png" alt="NGG" width={68} height={68} style={{ height: 34, width: "auto" }} />
             {activeCount > 0 && (
               <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", color: "var(--accent-text)", fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", padding: "3px 9px", borderRadius: "var(--radius-pill)" }}>
                 <LiveDot />

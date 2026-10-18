@@ -63,7 +63,7 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
   return (
     <div style={{ minHeight: "100vh", background: "var(--surface-sunken)", fontFamily: "var(--font-sans)", color: "var(--text)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 24px", background: "var(--surface)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 10 }}>
-        <Image src="/brand/ngg-logo.png" alt="NGG" width={64} height={22} style={{ height: 22, width: "auto" }} />
+        <Image src="/brand/ngg-logo.png" alt="NGG" width={68} height={68} style={{ height: 34, width: "auto" }} />
         <div style={{ width: 1, height: 22, background: "var(--border)" }} />
         <button onClick={() => router.push(`/app/boards/${board.id}`)} className="ngg-hover" style={{ display: "flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--text-muted)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", cursor: "pointer", padding: "7px 10px", borderRadius: "var(--radius-lg)" }}>
           <IconChevron size={15} strokeWidth={2.2} />
@@ -102,8 +102,8 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
               </p>
             </div>
             {board.appearance.show_org_logo && (
-              <div style={{ background: "rgba(255,255,255,.9)", borderRadius: "var(--radius-md)", padding: "4px 8px" }}>
-                <Image src="/brand/ngg-logo.png" alt="NGG" width={54} height={16} style={{ height: 16, width: "auto" }} />
+              <div style={{ background: "rgba(255,255,255,.9)", borderRadius: "var(--radius-md)", padding: 3, display: "flex" }}>
+                <Image src="/brand/ngg-logo.png" alt="NGG" width={96} height={96} style={{ height: 40, width: "auto" }} />
               </div>
             )}
           </div>
@@ -113,7 +113,8 @@ export default function ResultsPage({ params }: { params: Promise<{ roomId: stri
               {t("לא הוצג תוכן במפגש זה")}
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14, alignItems: "start" }}>
+            // Cards size in `em`; a fixed base keeps the export identical on any screen.
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14, alignItems: "start", fontSize: 16 }}>
               {submissions.map((s) => (
                 <DisplaySubmission key={s.id} submission={s} board={board} scale={0.62} />
               ))}
