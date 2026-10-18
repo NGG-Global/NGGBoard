@@ -220,7 +220,38 @@ class SupabaseDB {
     this.signalRoom("room", room.id);
   }
 
-  private async loadSubmissions(roomId: string, all: boolean) {
+  /**
+   * One reload in flight per room and scope. Realtime fires an event per
+   * submission, and a burst of participants sending at once used to start one
+   * full reload each: they ran in parallel and could land out of order, so an
+   * older response could overwrite a newer one and briefly drop or revert
+   * cards. Events that arrive mid-reload now just mark it stale, and it runs
+   * once more when it finishes — at most two reads per burst, always in order.
+   */
+  private submissionLoads = new Map<string, { promise: Promise<void>; stale: boolean }>();
+  private loadSubmissions(roomId: string, all: boolean): Promise<void> {
+    const key = `${roomId}:${all ? "all" : "published"}`;
+    const running = this.submissionLoads.get(key);
+    if (running) {
+      running.stale = true;
+      return running.promise;
+    }
+    const entry = { promise: Promise.resolve(), stale: false };
+    entry.promise = (async () => {
+      try {
+        do {
+          entry.stale = false;
+          await this.fetchSubmissions(roomId, all);
+        } while (entry.stale);
+      } finally {
+        this.submissionLoads.delete(key);
+      }
+    })();
+    this.submissionLoads.set(key, entry);
+    return entry.promise;
+  }
+
+  private async fetchSubmissions(roomId: string, all: boolean) {
     const sb = getSupabase();
     if (!sb) return;
     let q = sb.from("submissions").select("*").eq("room_id", roomId);
@@ -293,6 +324,7 @@ class SupabaseDB {
   private subscribeRoom(roomId: string) {
     const sb = getSupabase();
     if (!sb || this.channels.has(roomId)) return;
+    let joined = false;
     const ch = sb
       .channel(`room:${roomId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "submissions", filter: `room_id=eq.${roomId}` }, () => {
@@ -308,8 +340,29 @@ class SupabaseDB {
       .on("postgres_changes", { event: "*", schema: "public", table: "submission_comments", filter: `room_id=eq.${roomId}` }, () => {
         void this.loadComments(roomId);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") return;
+        // The client re-joins on its own after a dropped connection (Wi-Fi
+        // blip, laptop waking from sleep), but whatever changed while it was
+        // down is never replayed. Read the room again so a projector that has
+        // been running for hours can't silently drift from the truth.
+        if (joined) void this.resyncRoom(roomId);
+        joined = true;
+      });
     this.channels.set(roomId, ch);
+  }
+
+  private async resyncRoom(roomId: string) {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data: room } = await sb.from("live_rooms").select("*").eq("id", roomId).maybeSingle();
+    if (room) {
+      this.upsertRoom(room as LiveRoom);
+      this.signalRoom("room", roomId);
+    }
+    await this.loadSubmissions(roomId, true);
+    void this.loadParticipants(roomId);
+    void this.loadComments(roomId);
   }
 
   private subscribePublic(publicId: string) {
@@ -318,20 +371,40 @@ class SupabaseDB {
     if (!sb || !room || this.channels.has(publicId)) return;
     // Anonymous viewers can't filter live_rooms by internal id reliably, so we
     // resync the public view + published submissions on any relevant change.
+    //
+    // Realtime only delivers a row change to a client allowed to read the new
+    // row, and anon may read published submissions only — so when the
+    // facilitator hides, rejects or deletes a post, the change never reaches an
+    // anonymous screen (a projector PC nobody signed in on, a participant's
+    // board view). The facilitator's moderation therefore also touches the
+    // room (see `moderate`), and a room change re-reads the published set here.
+    let joined = false;
+    const refresh = async () => {
+      const { data } = await sb.from("public_board_view").select("*").eq("public_id", publicId).maybeSingle();
+      if (data) this.absorbPublicView(data as PublicViewRow);
+      this.signalRoom("room", room.id);
+      await this.loadSubmissions(room.id, false);
+    };
     const ch = sb
       .channel(`pub:${publicId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "submissions", filter: `room_id=eq.${room.id}` }, () => {
         void this.loadSubmissions(room.id, false);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `public_id=eq.${publicId}` }, async () => {
-        const { data } = await sb.from("public_board_view").select("*").eq("public_id", publicId).maybeSingle();
-        if (data) this.absorbPublicView(data as PublicViewRow);
-        this.signalRoom("room", room.id);
+      .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `public_id=eq.${publicId}` }, () => {
+        void refresh();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "submission_comments", filter: `room_id=eq.${room.id}` }, () => {
         void this.loadComments(room.id);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") return;
+        // Re-joined after a dropped connection: catch up on what was missed.
+        if (joined) {
+          void refresh();
+          void this.loadComments(room.id);
+        }
+        joined = true;
+      });
     this.channels.set(publicId, ch);
   }
 
@@ -919,7 +992,12 @@ class SupabaseDB {
     this.signalRoom("comments", roomId);
     const sb = getSupabase();
     void sb?.from("submissions").update({ status: "deleted" }).eq("room_id", roomId).neq("status", "deleted")
-      .then(({ error }) => error && console.warn("clearSubmissions", error.message));
+      .then(({ error }) => {
+        if (error) return console.warn("clearSubmissions", error.message);
+        // Anonymous screens never see the deletions themselves (see
+        // `subscribePublic`); the room touch makes them re-read the board.
+        this.touchActivity(roomId);
+      });
     void sb?.from("submission_comments").update({ status: "deleted" }).eq("room_id", roomId).neq("status", "deleted")
       .then(({ error }) => error && console.warn("clearSubmissions comments", error.message));
   }
@@ -1135,7 +1213,9 @@ class SupabaseDB {
       case "pin": patch = { pinned: true }; break;
       case "unpin": patch = { pinned: false }; break;
     }
-    return this.applySubmission(sub, patch);
+    // Same rule as LocalDB: moderating is facilitator activity and keeps a live
+    // room from idling out; pinning is not.
+    return this.applySubmission(sub, patch, { touchRoom: action !== "pin" && action !== "unpin" });
   }
   restoreTo(id: string, status: SubmissionStatus): Submission | null {
     const sub = this.cache.submissions.find((s) => s.id === id);
@@ -1174,7 +1254,7 @@ class SupabaseDB {
     }
     return true;
   }
-  private applySubmission(sub: Submission, patch: Partial<Submission>): Submission {
+  private applySubmission(sub: Submission, patch: Partial<Submission>, opts: { touchRoom?: boolean } = {}): Submission {
     const idx = this.cache.submissions.findIndex((s) => s.id === sub.id);
     const next = { ...sub, ...patch, updated_at: new Date().toISOString() };
     this.cache.submissions[idx] = next;
@@ -1185,7 +1265,13 @@ class SupabaseDB {
     }
     this.signalRoom("submissions", sub.room_id);
     const sb = getSupabase();
-    void sb?.from("submissions").update(patch).eq("id", sub.id).then(({ error }) => error && console.warn("moderate", error.message));
+    void sb?.from("submissions").update(patch).eq("id", sub.id).then(({ error }) => {
+      if (error) return console.warn("moderate", error.message);
+      // Only once the change is stored: the room touch is what tells anonymous
+      // screens to re-read the board (see `subscribePublic`), so it must not
+      // reach them ahead of the change it announces.
+      if (opts.touchRoom) this.touchActivity(sub.room_id);
+    });
     return next;
   }
 

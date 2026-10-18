@@ -51,8 +51,10 @@ interface Props {
  * instead of stretching to fill the row — with one or two submissions a plain
  * `1fr` track blows a single card up to the full width of the screen, which is
  * what made the shared board unreadable. Leftover tracks simply stay empty.
+ * The shared screen's width is in `em` of the stage unit, so the number of
+ * columns stays the same from a 720p projector to a 4K one.
  */
-const TRACK_MIN = { viewer: 260, shared: 340 } as const;
+const TRACK_MIN = { viewer: "260px", shared: "17em" } as const;
 
 export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, hideJoinChip, viewer, renderFooter }: Props) {
   const { t } = useI18n();
@@ -91,11 +93,16 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
   // keeps the balanced wall composition and the full-screen overlays; the
   // control room and the guest view get the plainer scrolling grid.
   const projector = !facilitator && !viewer;
+  // The projector and the control room's board both size off the stage unit
+  // (see `.ngg-stage-type`), which follows the size of the screen; the guest
+  // view is a phone and keeps a fixed 16px base.
+  const stage = !viewer;
+  const gap = stage ? "1em" : "clamp(12px, 1.4vw, 22px)";
 
   // Every surface scrolls. The board used to fit one screen at a time and
   // auto-cycle pages, which hid content nobody could bring back; now the shared
   // screen holds the whole session and is scrolled to reach the rest of it.
-  const gridColumns = `repeat(auto-fill, minmax(min(100%, ${viewer ? TRACK_MIN.viewer : TRACK_MIN.shared}px), 1fr))`;
+  const gridColumns = `repeat(auto-fill, minmax(min(100%, ${viewer ? TRACK_MIN.viewer : TRACK_MIN.shared}), 1fr))`;
   // A comfortable, fixed card size on every surface: with scrolling there is no
   // reason to shrink text to squeeze one more row onto the screen.
   const cardScale = projector ? baseScale : baseScale * 0.95;
@@ -103,167 +110,180 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
   const overlay = statusOverlay(room);
 
   return (
-    <div
-      style={{
-        // The guest view grows with its content and lets the page scroll; the
-        // projector and control room stay pinned to the viewport.
-        height: viewer ? "auto" : "100%",
-        minHeight: viewer ? "100%" : undefined,
-        width: "100%",
-        background: v.background,
-        color: textColor,
-        fontFamily: "var(--font-sans)",
-        display: "flex",
-        flexDirection: "column",
-        padding: viewer ? "clamp(14px, 4vw, 28px)" : "clamp(20px, 3vw, 48px)",
-        position: "relative",
-        overflow: viewer ? "visible" : "hidden",
-      }}
-    >
-      {/* Header */}
-      <header style={{ display: "flex", alignItems: "flex-start", gap: viewer ? 12 : 20, marginBottom: "clamp(12px, 2vh, 28px)" }}>
-        {board.appearance.client_logo_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={board.appearance.client_logo_url} alt={t("לוגו לקוח")} style={{ height: viewer ? "clamp(24px, 8vw, 40px)" : "clamp(28px, 4vh, 52px)", background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: 6 }} />
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: viewer ? `clamp(21px, ${5 * baseScale}vw, ${34 * baseScale}px)` : `clamp(28px, ${3.4 * baseScale}vw, ${72 * baseScale}px)`, fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)", color: textColor }}>
-            {board.public_title}
-          </h1>
-          {board.public_subtitle && (
-            <p style={{ fontSize: viewer ? `clamp(13px, ${3.2 * baseScale}vw, ${17 * baseScale}px)` : `clamp(15px, ${1.6 * baseScale}vw, ${28 * baseScale}px)`, color: subColor, marginTop: 6 }}>
-              {board.public_subtitle}
-            </p>
+    // The outer box is the size container the stage unit measures; the inner
+    // one is the board itself. A guest's page grows with its content, so it
+    // can't be a size container and keeps a fixed base instead.
+    <div className={stage ? "ngg-stage" : undefined} style={{ height: viewer ? "auto" : "100%", minHeight: viewer ? "100%" : undefined, width: "100%" }}>
+      <div
+        className={stage ? "ngg-stage-type" : undefined}
+        style={{
+          // The guest view grows with its content and lets the page scroll; the
+          // projector and control room stay pinned to the viewport.
+          height: viewer ? "auto" : "100%",
+          minHeight: viewer ? "100%" : undefined,
+          width: "100%",
+          fontSize: viewer ? 16 : undefined,
+          background: v.background,
+          color: textColor,
+          fontFamily: "var(--font-sans)",
+          display: "flex",
+          flexDirection: "column",
+          padding: viewer ? "clamp(14px, 4vw, 28px)" : "clamp(20px, 2.4em, 64px)",
+          position: "relative",
+          overflow: viewer ? "visible" : "hidden",
+        }}
+      >
+        {/* Header */}
+        <header style={{ display: "flex", alignItems: "flex-start", gap: viewer ? 12 : "1em", marginBottom: viewer ? "clamp(12px, 2vh, 28px)" : "1.1em" }}>
+          {board.appearance.client_logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={board.appearance.client_logo_url} alt={t("לוגו לקוח")} style={{ height: viewer ? "clamp(24px, 8vw, 40px)" : "2.6em", background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: viewer ? 6 : "0.3em" }} />
           )}
-        </div>
-        {/* Persistent small join hint — a guest is already in, so it's dropped there. */}
-        {!hideJoinChip && !viewer && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: "none", background: "rgba(255,255,255,.94)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
-            <QRCodeCanvas value={joinUrl} size={84} />
-            <div dir="ltr" style={{ fontSize: 15, fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".06em" }}>
-              {formatRoomCode(room.room_code)}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ fontSize: viewer ? `clamp(21px, ${5 * baseScale}vw, ${34 * baseScale}px)` : `${3.1 * baseScale}em`, fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)", color: textColor }}>
+              {board.public_title}
+            </h1>
+            {board.public_subtitle && (
+              <p style={{ fontSize: viewer ? `clamp(13px, ${3.2 * baseScale}vw, ${17 * baseScale}px)` : `${1.4 * baseScale}em`, color: subColor, marginTop: viewer ? 6 : "0.25em" }}>
+                {board.public_subtitle}
+              </p>
+            )}
+          </div>
+          {/* Room state (paused / read-only / suspended) sits in the header, beside
+              the title rather than over it, so it never hides the board's name or
+              the first row of cards. The guest equivalent is the strip below. */}
+          {stage && overlay && !focused && !room.qr_overlay_visible && room.status !== "ended" && (
+            <div role="status" style={{ alignSelf: "center", display: "inline-flex", alignItems: "center", gap: "0.5em", flex: "none", background: overlay.bg, color: overlay.fg, padding: "0.55em 1.1em", borderRadius: "var(--radius-pill)", fontSize: "1.05em", fontWeight: "var(--weight-bold)", boxShadow: "var(--shadow-lg)" }}>
+              {overlay.icon}
+              {overlay.label}
+            </div>
+          )}
+          {/* Persistent join hint — a guest is already in, so it's dropped there.
+              Sized off the stage unit so it stays scannable from the back of the
+              room on a large screen. */}
+          {!hideJoinChip && !viewer && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.3em", flex: "none", background: "rgba(255,255,255,.94)", borderRadius: "var(--radius-lg)", padding: "0.5em 0.6em" }}>
+              <QRCodeCanvas value={joinUrl} size={180} displaySize="5.6em" />
+              <div dir="ltr" style={{ fontSize: "1em", fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".06em", lineHeight: 1.1 }}>
+                {formatRoomCode(room.room_code)}
+              </div>
+            </div>
+          )}
+        </header>
+
+        {/* The facilitator's brief, pinned above the content for a guest. On the
+            projector it would compete with the board itself, so it stays here. */}
+        {viewer && board.instructions?.trim() && (
+          <div style={{ background: v.dark ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.72)", border: `1px solid ${v.dark ? "rgba(255,255,255,.16)" : "rgba(8,8,16,.08)"}`, borderRadius: "var(--radius-xl)", padding: "13px 15px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: subColor, letterSpacing: ".02em" }}>{t("ההנחיות")}</div>
+            <p style={{ fontSize: "var(--text-sm)", color: textColor, lineHeight: "var(--leading-relaxed)", whiteSpace: "pre-line" }}>{board.instructions.trim()}</p>
+          </div>
+        )}
+
+        {/* A guest can't be handed a full-screen takeover — it would hide the very
+            content they opened the board to read — so the room's state is a strip. */}
+        {viewer && (overlay || room.status === "ended") && (
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: room.status === "ended" ? "var(--ink-900)" : overlay!.bg, color: room.status === "ended" ? "#fff" : overlay!.fg, padding: "8px 16px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", boxShadow: "var(--shadow-sm)" }}>
+              {room.status === "ended" ? <IconCheck size={15} /> : overlay!.icon}
+              {room.status === "ended" ? t("המפגש הסתיים") : overlay!.label}
             </div>
           </div>
         )}
-      </header>
 
-      {/* The facilitator's brief, pinned above the content for a guest. On the
-          projector it would compete with the board itself, so it stays here. */}
-      {viewer && board.instructions?.trim() && (
-        <div style={{ background: v.dark ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.72)", border: `1px solid ${v.dark ? "rgba(255,255,255,.16)" : "rgba(8,8,16,.08)"}`, borderRadius: "var(--radius-xl)", padding: "13px 15px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ fontSize: "var(--text-2xs)", fontWeight: "var(--weight-bold)", color: subColor, letterSpacing: ".02em" }}>{t("ההנחיות")}</div>
-          <p style={{ fontSize: "var(--text-sm)", color: textColor, lineHeight: "var(--leading-relaxed)", whiteSpace: "pre-line" }}>{board.instructions.trim()}</p>
+        {/* Content area — the page scrolls in guest mode, the panel scrolls on the
+            shared screen and in the control room. Everything sent is reachable. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden" }}>
+          {ordered.length === 0 && !zoned ? (
+            <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
+          ) : zoned ? (
+            <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} projector={projector} viewer={viewer} renderFooter={renderFooter} />
+          ) : room.layout === "mosaic" ? (
+            <div style={{ columnWidth: viewer ? TRACK_MIN.viewer : TRACK_MIN.shared, columnGap: gap }}>
+              {ordered.map((s) => (
+                <div key={s.id} style={{ marginBottom: gap, breakInside: "avoid" }}>
+                  <DisplaySubmission submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+                </div>
+              ))}
+            </div>
+          ) : room.layout === "feed" ? (
+            // A feed is one column by definition; on a wide screen it is capped and
+            // centered rather than stretched edge to edge.
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap, maxWidth: viewer ? undefined : "42em", marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
+              {ordered.map((s) => (
+                <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+              ))}
+            </div>
+          ) : projector ? (
+            <BalancedWall items={ordered} board={board} scale={cardScale} facFor={facFor} />
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: gridColumns,
+                gap,
+                gridAutoRows: "min-content",
+                alignContent: "start",
+              }}
+            >
+              {ordered.map((s) => (
+                <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      {/* A guest can't be handed a full-screen takeover — it would hide the very
-          content they opened the board to read — so the room's state is a strip. */}
-      {viewer && (overlay || room.status === "ended") && (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: room.status === "ended" ? "var(--ink-900)" : overlay!.bg, color: room.status === "ended" ? "#fff" : overlay!.fg, padding: "8px 16px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-xs)", fontWeight: "var(--weight-bold)", boxShadow: "var(--shadow-sm)" }}>
-            {room.status === "ended" ? <IconCheck size={15} /> : overlay!.icon}
-            {room.status === "ended" ? t("המפגש הסתיים") : overlay!.label}
-          </div>
-        </div>
-      )}
+        {/* Footer: org logo. The mark is a square emblem with its wordmark under
+            it, so it needs real height to read as a logo rather than a smudge. */}
+        {board.appearance.show_org_logo && (
+          <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: viewer ? "clamp(10px, 1.6vh, 20px)" : "0.8em" }}>
+            <div style={{ background: v.dark ? "rgba(255,255,255,.92)" : "transparent", borderRadius: "var(--radius-md)", padding: v.dark ? "0.15em" : 0, display: "flex" }}>
+              <Image src="/brand/ngg-logo.png" alt="NGG" width={96} height={96} style={{ height: viewer ? 34 : "2.5em", width: "auto" }} />
+            </div>
+          </footer>
+        )}
 
-      {/* Content area — the page scrolls in guest mode, the panel scrolls on the
-          shared screen and in the control room. Everything sent is reachable. */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden" }}>
-        {ordered.length === 0 && !zoned ? (
-          <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
-        ) : zoned ? (
-          <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} projector={projector} viewer={viewer} renderFooter={renderFooter} />
-        ) : room.layout === "mosaic" ? (
-          <div style={{ columnWidth: viewer ? TRACK_MIN.viewer : TRACK_MIN.shared, columnGap: "clamp(12px, 1.4vw, 22px)" }}>
-            {ordered.map((s) => (
-              <div key={s.id} style={{ marginBottom: "clamp(12px, 1.4vw, 22px)", breakInside: "avoid" }}>
-                <DisplaySubmission submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
-              </div>
-            ))}
-          </div>
-        ) : room.layout === "feed" ? (
-          // A feed is one column by definition; on a wide screen it is capped and
-          // centered rather than stretched edge to edge.
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "clamp(12px, 1.4vw, 22px)", maxWidth: viewer ? undefined : 760, marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
-            {ordered.map((s) => (
-              <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
-            ))}
-          </div>
-        ) : projector ? (
-          <BalancedWall items={ordered} board={board} scale={cardScale} facFor={facFor} />
-        ) : (
+        {/* Focus mode overlay — projector/control room only. A guest keeps their
+            own place in the board instead of having the facilitator's highlight
+            fill their screen; the focused card is still there in the list. */}
+        {focused && !viewer && (
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: gridColumns,
-              gap: "clamp(12px, 1.4vw, 22px)",
-              gridAutoRows: "min-content",
-              alignContent: "start",
-            }}
+            onClick={facilitator ? () => facilitator.onFocus(focused.id) : undefined}
+            title={facilitator ? t("לחצו להסרה מהמסך") : undefined}
+            // Near-opaque with a blur: the wall behind is context, not content, and
+            // cards showing through at full contrast fight the focused one.
+            style={{ position: "absolute", inset: 0, background: v.dark ? "rgba(8,8,16,.9)" : "rgba(246,246,248,.92)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "3em", zIndex: 40, cursor: facilitator ? "zoom-out" : "default" }}
           >
-            {ordered.map((s) => (
-              <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
-            ))}
+            <div style={{ width: "min(58em, 100%)", maxHeight: "100%", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+              <DisplaySubmission submission={focused} board={board} scale={baseScale} focus />
+            </div>
+          </div>
+        )}
+
+        {/* QR overlay (facilitator-triggered) — a guest has already joined. */}
+        {room.qr_overlay_visible && !focused && !viewer && (
+          // Opaque: the code has to scan from across a room, and cards showing
+          // through behind the room code and link made both hard to read.
+          <div className="theme-dark" style={{ position: "absolute", inset: 0, background: "rgba(8,8,16,.97)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.2em", zIndex: 50, color: "#fff", padding: "1.5em" }}>
+            <div style={{ fontSize: "2.4em", fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)" }}>{t("הצטרפו למפגש")}</div>
+            <div style={{ background: "#fff", padding: "0.9em", borderRadius: "var(--radius-2xl)" }}>
+              <QRCodeCanvas value={joinUrl} size={480} displaySize="min(21em, 48vh)" />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.3em" }}>
+              <div dir="ltr" style={{ fontSize: "3em", fontWeight: "var(--weight-black)", letterSpacing: ".08em", lineHeight: 1.1 }}>{formatRoomCode(room.room_code)}</div>
+              <div dir="ltr" style={{ fontSize: "1.1em", color: "var(--neutral-400)" }}>{joinUrl.replace(/^https?:\/\//, "")}</div>
+            </div>
+          </div>
+        )}
+
+        {room.status === "ended" && !viewer && (
+          <div className="theme-dark" style={{ position: "absolute", inset: 0, background: "var(--gradient-ink)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, zIndex: 60, color: "#f4f4f6" }}>
+            <Image src="/brand/ngg-mark.png" alt="" width={54} height={47} style={{ height: 47, width: "auto", opacity: 0.85 }} />
+            <div style={{ fontSize: "clamp(30px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>{t("המפגש הסתיים")}</div>
+            <div style={{ fontSize: "var(--text-lg)", color: "var(--neutral-400)" }}>{t("תודה על ההשתתפות")}</div>
           </div>
         )}
       </div>
-
-      {/* Footer: org logo */}
-      {board.appearance.show_org_logo && (
-        <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: "clamp(10px, 1.6vh, 20px)", minHeight: 30 }}>
-          <div style={{ background: v.dark ? "rgba(255,255,255,.9)" : "transparent", borderRadius: "var(--radius-md)", padding: v.dark ? "4px 8px" : 0 }}>
-            <Image src="/brand/ngg-logo.png" alt="NGG" width={64} height={18} style={{ height: 18, width: "auto" }} />
-          </div>
-        </footer>
-      )}
-
-      {/* Focus mode overlay — projector/control room only. A guest keeps their
-          own place in the board instead of having the facilitator's highlight
-          fill their screen; the focused card is still there in the list. */}
-      {focused && !viewer && (
-        <div
-          onClick={facilitator ? () => facilitator.onFocus(focused.id) : undefined}
-          title={facilitator ? t("לחצו להסרה מהמסך") : undefined}
-          style={{ position: "absolute", inset: 0, background: v.dark ? "rgba(8,8,16,.72)" : "rgba(255,255,255,.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(40px, 6vw, 120px)", zIndex: 40, cursor: facilitator ? "zoom-out" : "default" }}
-        >
-          <div style={{ width: "min(1100px, 100%)", maxHeight: "100%" }} onClick={(e) => e.stopPropagation()}>
-            <DisplaySubmission submission={focused} board={board} scale={baseScale} focus />
-          </div>
-        </div>
-      )}
-
-      {/* QR overlay (facilitator-triggered) — a guest has already joined. */}
-      {room.qr_overlay_visible && !focused && !viewer && (
-        <div className="theme-dark" style={{ position: "absolute", inset: 0, background: "rgba(8,8,16,.88)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 26, zIndex: 50, color: "#fff" }}>
-          <div style={{ fontSize: "clamp(28px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>{t("הצטרפו למפגש")}</div>
-          <div style={{ background: "#fff", padding: 20, borderRadius: "var(--radius-2xl)" }}>
-            <QRCodeCanvas value={joinUrl} size={280} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <div dir="ltr" style={{ fontSize: "clamp(32px, 5vw, 64px)", fontWeight: "var(--weight-black)", letterSpacing: ".08em" }}>{formatRoomCode(room.room_code)}</div>
-            <div dir="ltr" style={{ fontSize: "var(--text-lg)", color: "var(--neutral-400)" }}>{joinUrl.replace(/^https?:\/\//, "")}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Lifecycle overlays (the guest equivalent is the status strip above) */}
-      {overlay && !focused && !room.qr_overlay_visible && !viewer && (
-        <div style={{ position: "absolute", insetInlineStart: 0, insetInlineEnd: 0, top: "clamp(20px, 3vw, 48px)", display: "flex", justifyContent: "center", zIndex: 45, pointerEvents: "none" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: overlay.bg, color: overlay.fg, padding: "12px 22px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-lg)", fontWeight: "var(--weight-bold)", boxShadow: "var(--shadow-lg)" }}>
-            {overlay.icon}
-            {overlay.label}
-          </div>
-        </div>
-      )}
-
-      {room.status === "ended" && !viewer && (
-        <div className="theme-dark" style={{ position: "absolute", inset: 0, background: "var(--gradient-ink)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, zIndex: 60, color: "#f4f4f6" }}>
-          <Image src="/brand/ngg-mark.png" alt="" width={54} height={47} style={{ height: 47, width: "auto", opacity: 0.85 }} />
-          <div style={{ fontSize: "clamp(30px, 4vw, 56px)", fontWeight: "var(--weight-black)" }}>{t("המפגש הסתיים")}</div>
-          <div style={{ fontSize: "var(--text-lg)", color: "var(--neutral-400)" }}>{t("תודה על ההשתתפות")}</div>
-        </div>
-      )}
     </div>
   );
 }
@@ -277,14 +297,14 @@ function balancedColumns(n: number): number {
 }
 
 /**
- * Ideal card width in px, sized to what the content warrants and capped well
- * below the width of the screen — a single submission should read as a card on
- * the board, not as a poster filling it.
+ * Ideal card width in `em` of the stage unit, sized to what the content
+ * warrants and capped well below the width of the screen — a single submission
+ * should read as a card on the board, not as a poster filling it.
  */
 function idealCardWidth(s: Submission): number {
-  if (s.type !== "text" && s.media_url) return 420;
+  if (s.type !== "text" && s.media_url) return 21;
   const len = s.text_content?.length ?? 0;
-  return len <= 45 ? 300 : len <= 130 ? 380 : 460;
+  return len <= 45 ? 15 : len <= 130 ? 19 : 23;
 }
 
 /**
@@ -319,7 +339,7 @@ function BalancedWall({
     rows.push(items.slice(idx, idx + size));
     idx += size;
   }
-  const gap = "clamp(12px, 1.4vw, 22px)";
+  const gap = "1em";
   return (
     // minHeight rather than height: the composition centres itself on a
     // half-empty board and grows past the screen — scrolled, not truncated —
@@ -328,7 +348,7 @@ function BalancedWall({
       {rows.map((row, ri) => (
         <div key={ri} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap, minHeight: 0 }}>
           {row.map((s) => (
-            <div key={s.id} style={{ flex: `0 1 ${idealCardWidth(s)}px`, minWidth: 0, display: "flex", justifyContent: "center" }}>
+            <div key={s.id} style={{ flex: `0 1 ${idealCardWidth(s)}em`, minWidth: 0, display: "flex", justifyContent: "center" }}>
               <DisplaySubmission submission={s} board={board} scale={scale} facilitator={facFor(s)} hug />
             </div>
           ))}
@@ -382,22 +402,22 @@ function ZonedContent({
     // An explicit 100% row (rather than the default content-sized one) is what
     // keeps each column bounded by the screen — without it the columns simply
     // grow to their tallest zone and the inner scrollers never engage.
-    <div style={{ display: "grid", gridTemplateColumns: viewer ? "1fr" : `repeat(${zones.length}, 1fr)`, gridTemplateRows: viewer ? undefined : "100%", gap: viewer ? 26 : "clamp(12px, 1.6vw, 26px)", height: viewer ? undefined : "100%" }}>
+    <div style={{ display: "grid", gridTemplateColumns: viewer ? "1fr" : `repeat(${zones.length}, 1fr)`, gridTemplateRows: viewer ? undefined : "100%", gap: viewer ? 26 : "1.2em", height: viewer ? undefined : "100%" }}>
       {zones.map((z, i) => {
         const items = byZone.get(z.id) ?? [];
         return (
-          <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, height: viewer ? undefined : "100%", borderInlineStart: !viewer && i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: !viewer && i > 0 ? "clamp(8px, 1vw, 18px)" : 0 }}>
+          <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, height: viewer ? undefined : "100%", borderInlineStart: !viewer && i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: !viewer && i > 0 ? "0.8em" : 0 }}>
             <div style={{ flex: "none", paddingBottom: 10, marginBottom: 10, borderBottom: `2px solid ${divider}` }}>
-              <div style={{ fontSize: viewer ? `clamp(16px, ${4 * scale}vw, ${22 * scale}px)` : `clamp(16px, ${1.4 * scale}vw, ${28 * scale}px)`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
+              <div style={{ fontSize: viewer ? `clamp(16px, ${4 * scale}vw, ${22 * scale}px)` : `${1.35 * scale}em`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
                 {z.title || t("אזור {number}", { number: i + 1 })}
               </div>
-              {z.subtitle && <div style={{ fontSize: viewer ? `clamp(12px, ${3 * scale}vw, ${15 * scale}px)` : `clamp(11px, ${0.9 * scale}vw, ${16 * scale}px)`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
+              {z.subtitle && <div style={{ fontSize: viewer ? `clamp(12px, ${3 * scale}vw, ${15 * scale}px)` : `${0.85 * scale}em`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
             </div>
             {/* Each zone column scrolls on its own so a busy zone never truncates
                 its cards or pushes the quieter zones off the screen. */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden", display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden", display: "flex", flexDirection: "column", gap: viewer ? "clamp(10px, 1vw, 16px)" : "0.8em" }}>
               {items.length === 0 ? (
-                <div style={{ color: subColor, fontSize: `clamp(12px, 1vw, ${16 * scale}px)`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
+                <div style={{ color: subColor, fontSize: viewer ? `clamp(12px, 1vw, ${16 * scale}px)` : `${0.85 * scale}em`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
               ) : (
                 items.map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug={!viewer} dense={projector && zones.length >= 3} footer={renderFooter?.(s)} />)
               )}
@@ -410,9 +430,11 @@ function ZonedContent({
 }
 
 function statusOverlay(room: LiveRoom): { label: string; icon: React.ReactNode; bg: string; fg: string } | null {
-  if (room.status === "paused") return { label: translate("קבלת התוכן מושהית"), icon: <IconPause size={20} />, bg: "var(--warning)", fg: "#fff" };
-  if (room.status === "read_only") return { label: translate("מצב קריאה בלבד"), icon: <IconLock size={18} />, bg: "var(--info)", fg: "#fff" };
-  if (room.status === "suspended") return { label: translate("החדר הושהה זמנית"), icon: <IconClock size={18} />, bg: "var(--warning)", fg: "#fff" };
+  // Icons sized in `em` so they match the pill they sit in on every surface.
+  const icon = { width: "1.2em", height: "1.2em" };
+  if (room.status === "paused") return { label: translate("קבלת התוכן מושהית"), icon: <IconPause style={icon} />, bg: "var(--warning)", fg: "#fff" };
+  if (room.status === "read_only") return { label: translate("מצב קריאה בלבד"), icon: <IconLock style={icon} />, bg: "var(--info)", fg: "#fff" };
+  if (room.status === "suspended") return { label: translate("החדר הושהה זמנית"), icon: <IconClock style={icon} />, bg: "var(--warning)", fg: "#fff" };
   return null;
 }
 
@@ -433,15 +455,15 @@ function EmptyDisplay({ joinUrl, roomCode, dark, viewer }: { joinUrl: string; ro
     );
   }
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28 }}>
-      <div style={{ fontSize: "clamp(22px, 3vw, 40px)", fontWeight: "var(--weight-extrabold)", color: dark ? "#fff" : "var(--neutral-900)", textAlign: "center" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.3em" }}>
+      <div style={{ fontSize: "1.7em", fontWeight: "var(--weight-extrabold)", color: dark ? "#fff" : "var(--neutral-900)", textAlign: "center", lineHeight: "var(--leading-tight)" }}>
         {t("סרקו את הקוד כדי להצטרף ולשלוח את התוכן הראשון")}
       </div>
-      <div style={{ background: "#fff", padding: 24, borderRadius: "var(--radius-2xl)", boxShadow: "var(--shadow-xl)", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-        <QRCodeCanvas value={joinUrl} size={240} />
-        <div dir="ltr" style={{ fontSize: 36, fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".08em" }}>{formatRoomCode(roomCode)}</div>
+      <div style={{ background: "#fff", padding: "1.1em", borderRadius: "var(--radius-2xl)", boxShadow: "var(--shadow-xl)", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5em" }}>
+        <QRCodeCanvas value={joinUrl} size={400} displaySize="min(13em, 38vh)" />
+        <div dir="ltr" style={{ fontSize: "1.9em", fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".08em", lineHeight: 1.1 }}>{formatRoomCode(roomCode)}</div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, color: dark ? "rgba(255,255,255,.8)" : "var(--neutral-700)", fontSize: "var(--text-lg)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: dark ? "rgba(255,255,255,.8)" : "var(--neutral-700)", fontSize: "1.1em" }}>
         <LiveDot light={dark} />
         {t("ממתין למשתתפים…")}
       </div>

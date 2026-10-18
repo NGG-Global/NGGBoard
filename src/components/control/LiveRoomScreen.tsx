@@ -341,7 +341,7 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
               </div>
               {tab === "published" && (
                 <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
-                  {t("טיפ: אפשר גם להצביע, להצמיד, להסתיר או להסיר תוכן ישירות על הלוח (בריחוף מעל כרטיס).")}
+                  {t("טיפ: אפשר גם להציג במרכז, להצמיד, להסתיר או להסיר תוכן ישירות על הלוח (בריחוף מעל כרטיס).")}
                 </div>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -378,14 +378,22 @@ export function LiveRoomScreen({ roomId }: { roomId: string }) {
 
       {/* ---- Live board (fills remaining space) ---- */}
       <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-        <DisplayCanvas room={room} board={board} submissions={submissions} joinUrl={joinUrl} facilitator={facilitator} hideJoinChip={open} />
+        {/* The screen is LTR only to pin the drawer to the physical left. The
+            board itself must read in the language's direction, exactly as the
+            projector shows it — inheriting LTR mirrored the header and cards
+            and put Hebrew punctuation on the wrong side. */}
+        <div dir={lang === "he" ? "rtl" : "ltr"} style={{ height: "100%" }}>
+          <DisplayCanvas room={room} board={board} submissions={submissions} joinUrl={joinUrl} facilitator={facilitator} hideJoinChip={open} />
+        </div>
 
-        {/* Open handle (visible when drawer closed) */}
+        {/* Open handle (visible when drawer closed). Bottom corner, on the
+            drawer's side: the top corner is where the board's join QR sits once
+            the drawer is closed, and the handle used to cover it. */}
         {!open && (
           <button
             onClick={() => setOpen(true)}
             className="ngg-drawer-handle"
-            style={{ position: "absolute", top: 20, insetInlineStart: 20, zIndex: 70, display: "flex", alignItems: "center", gap: 8, border: "none", background: "var(--accent)", color: "#fff", padding: "10px 16px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", cursor: "pointer", boxShadow: "var(--shadow-lg)" }}
+            style={{ position: "absolute", bottom: 20, insetInlineStart: 20, zIndex: 70, display: "flex", alignItems: "center", gap: 8, border: "none", background: "var(--accent)", color: "#fff", padding: "10px 16px", borderRadius: "var(--radius-pill)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-bold)", cursor: "pointer", boxShadow: "var(--shadow-lg)" }}
           >
             <LiveDot light /> {t("בקרת מנחה")}
           </button>

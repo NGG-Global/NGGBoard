@@ -52,7 +52,13 @@ interface Props {
   footer?: React.ReactNode;
 }
 
-/** A single submission rendered for the projector — large, high-contrast. */
+/**
+ * A single submission rendered for the projector — large, high-contrast.
+ *
+ * Sized in `em`, so it follows the font size of whatever it sits in: the shared
+ * screen's stage unit (which tracks the screen size), or a plain 16px on the
+ * guest phone view and the results export.
+ */
 export function DisplaySubmission({ submission, board, scale, focus, facilitator, hug, dense, footer }: Props) {
   const { t } = useI18n();
   // A facilitator's own post is always attributed to her: the board's
@@ -69,16 +75,19 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
       : avatarColors(submission.id);
 
   // Long answers read better a step smaller; short quotes can carry more size.
+  // Focus mode steps down too, so a long answer still fits on one screen.
   const textLen = submission.text_content?.length ?? 0;
-  const lenFactor = focus ? 1 : textLen > 220 ? 0.78 : textLen > 120 ? 0.88 : textLen > 60 ? 1 : 1.12;
+  const lenFactor = focus
+    ? textLen > 220 ? 0.62 : textLen > 120 ? 0.8 : 1
+    : textLen > 220 ? 0.78 : textLen > 120 ? 0.88 : textLen > 60 ? 1 : 1.12;
 
-  const nameSize = `${(focus ? 1.6 : 1) * scale}rem`;
-  const textSize = `${(focus ? 3 : 1.35) * scale * lenFactor}rem`;
+  const nameSize = `${(focus ? 1.6 : 1) * scale}em`;
+  const textSize = `${(focus ? 3 : 1.35) * scale * lenFactor}em`;
   const hasMedia = submission.type !== "text" && !!submission.media_url;
   // Mindful containers: clamp text so one verbose answer can't dominate the
   // composition — tighter when it captions media, roomier when text-only.
   const clampLines = hug && !focus ? (hasMedia ? (dense ? 2 : 3) : dense ? 4 : 9) : undefined;
-  const mediaMaxHeight = dense ? "min(22vh, 300px)" : "min(34vh, 380px)";
+  const mediaMaxHeight = dense ? "min(22vh, 15em)" : "min(34vh, 19em)";
 
   return (
     <div
@@ -86,10 +95,10 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
       style={{
         background: "#ffffff",
         borderRadius: "var(--radius-2xl)",
-        padding: focus ? "clamp(28px, 4vw, 56px)" : "clamp(16px, 1.6vw, 26px)",
+        padding: focus ? "2.6em" : "1.15em 1.25em",
         display: "flex",
         flexDirection: "column",
-        gap: focus ? 20 : 12,
+        gap: focus ? "1em" : "0.7em",
         boxShadow: focus ? "0 30px 80px rgba(8,8,16,.35)" : "0 4px 16px rgba(8,8,16,.14)",
         border: submission.pinned ? "2px solid var(--magenta-400)" : "1px solid rgba(8,8,16,.06)",
         height: hug ? "auto" : "100%",
@@ -121,7 +130,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
           style={{
             borderRadius: "var(--radius-lg)",
             overflow: "hidden",
-            minHeight: hug ? undefined : focus ? 220 : 120,
+            minHeight: hug ? undefined : focus ? "11em" : "6em",
             aspectRatio: hug ? "4 / 3" : undefined,
             maxHeight: hug ? mediaMaxHeight : undefined,
             flex: submission.text_content || hug ? "none" : 1,
@@ -159,11 +168,13 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.6em", marginTop: "auto" }}>
         <span
           style={{
-            width: focus ? 44 : 30,
-            height: focus ? 44 : 30,
+            // In the avatar's own font size (the name's), so it keeps its
+            // proportions at every screen size.
+            width: "1.85em",
+            height: "1.85em",
             borderRadius: "50%",
             background: avBg,
             color: avFg,
@@ -179,12 +190,12 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
         </span>
         <span style={{ fontSize: nameSize, fontWeight: "var(--weight-bold)", color: "var(--neutral-700)" }}>{name}</span>
         {byFacilitator && (
-          <span style={{ fontSize: `${0.7 * scale}rem`, fontWeight: "var(--weight-bold)", color: "var(--accent-text)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: "var(--radius-pill)", flex: "none" }}>
+          <span style={{ fontSize: `${0.75 * scale}em`, fontWeight: "var(--weight-bold)", color: "var(--accent-text)", background: "var(--accent-soft)", padding: "0.15em 0.65em", borderRadius: "var(--radius-pill)", flex: "none" }}>
             {t("מנחה")}
           </span>
         )}
         {submission.pinned && (
-          <span style={{ marginInlineStart: "auto", fontSize: `${0.75 * scale}rem`, fontWeight: "var(--weight-bold)", color: "var(--magenta-600)", background: "var(--magenta-50)", padding: "2px 10px", borderRadius: "var(--radius-pill)" }}>
+          <span style={{ marginInlineStart: "auto", fontSize: `${0.8 * scale}em`, fontWeight: "var(--weight-bold)", color: "var(--magenta-600)", background: "var(--magenta-50)", padding: "0.15em 0.75em", borderRadius: "var(--radius-pill)", flex: "none" }}>
             {t("מוצמד")}
           </span>
         )}
@@ -209,7 +220,7 @@ function VideoMedia({ mediaUrl, focus, hasCaption, hug, maxHeight }: { mediaUrl:
     position: "relative",
     borderRadius: "var(--radius-lg)",
     overflow: "hidden",
-    minHeight: hug ? undefined : focus ? 220 : 120,
+    minHeight: hug ? undefined : focus ? "11em" : "6em",
     aspectRatio: hug && !focus ? "16 / 9" : undefined,
     maxHeight: hug && !focus ? maxHeight : undefined,
     flex: hasCaption || hug ? "none" : 1,
@@ -236,7 +247,7 @@ function VideoMedia({ mediaUrl, focus, hasCaption, hug, maxHeight }: { mediaUrl:
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={youTubeThumbnailUrl(videoId)} alt={t("סרטון ששלח משתתף")} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.92 }} />
       <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", background: "rgba(8,8,16,.28)" }}>
-        <IconPlay size={40} />
+        <IconPlay size={40} style={{ width: "2.4em", height: "2.4em" }} />
       </span>
     </div>
   );

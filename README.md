@@ -432,6 +432,49 @@ What changed:
   (part 4 of migration 0010), which re-checks ownership server-side. Removing
   frees a single-submission board so the corrected answer can be sent.
 
+## The shared screen at any resolution
+
+The projector display and the board in the control room size everything —
+cards, type, avatars, the header, the join QR and the overlays — in `em` off one
+unit (`.ngg-stage-type` in `src/styles/globals.css`) that follows the size of
+the board area. A 1280×720 projector and a 1920×1080 one therefore show the same
+composition, instead of the larger screen leaving fixed-size cards huddled in
+the middle at a size nobody at the back can read. The unit is bounded: never
+under 15px (legible on a low-resolution projector), never over 34px (a 4K screen
+keeps a sensible number of cards per screen). It uses container units, so the
+control room's board scales to the space left beside the drawer; browsers
+without them fall back to viewport units. The guest phone view and the results
+export keep a fixed 16px base and are unaffected.
+
+Room states (paused, view-only, suspended) are shown as a pill in the header
+beside the title, never over it, and the QR overlay is opaque so the code, room
+number and link stay readable.
+
+## Anonymous screens on Supabase
+
+Supabase Realtime only delivers a row change to a client allowed to read the
+new row, and anonymous visitors may read **published** submissions only. When
+the facilitator hides, rejects or deletes a post, that change is therefore not
+delivered to an anonymous screen — a projector PC nobody signed in on, or a
+participant's "view the board" page — so the post would stay up there.
+
+To close that gap, the facilitator's moderation also touches the room
+(`live_rooms.last_activity_at`) once the change is stored, and anonymous screens
+re-read the published set whenever the room changes. This matches the local
+backend, where moderation (except pin/unpin) already counts as room activity.
+Two related safeguards for screens left running for hours:
+
+- **Bursts don't race.** One submissions reload runs per room at a time; events
+  that arrive meanwhile trigger exactly one more, so an older response can
+  never overwrite a newer one.
+- **Reconnects catch up.** When the realtime connection drops and re-joins
+  (Wi-Fi blip, laptop waking), the room is read again, because changes made
+  while the socket was down are not replayed.
+
+These paths are covered in `src/lib/data/supabase-db.test.ts` against a
+scripted client. They have not been exercised against a live project from this
+repository's tests; confirm on staging before an event (see the QA checklist).
+
 ## GIF & sticker submissions (Giphy)
 
 Participants can search and send GIFs / stickers from the Giphy library (a
@@ -546,9 +589,14 @@ watch URL.
 
 **Projector display**
 - [ ] Card wall / mosaic / live feed all readable from a distance
-- [ ] Handles 1, 5, 20, 100 submissions (pagination cycles above one screen)
+- [ ] Handles 1, 5, 20, 100 submissions (the board scrolls above one screen)
 - [ ] Focus mode, QR overlay, paused/suspended/ended overlays
+- [ ] Same composition at 1280×720, 1920×1080 and 1024×768; nothing tiny on the large screen
+- [ ] The paused pill sits beside the title, never over it; the QR overlay is opaque
+- [ ] The control-room board reads right-to-left, exactly like the projector
+- [ ] With the control drawer closed, its handle doesn't cover the join QR
 - [ ] New content animates in (respects reduced-motion)
+- [ ] Supabase: hiding a post removes it from a display opened **without** signing in
 
 **Cross-cutting**
 - [ ] RTL correct across all screens (nav, forms, cards, overlays)
@@ -576,7 +624,10 @@ removal alongside their post), participant recovery (removing your own post
 frees a single-submission board; ownership and board-setting checks refuse
 otherwise), and the write-failure classifier in `src/lib/write-errors.test.ts`
 (every server reason recognised, network drops distinguished from content
-problems, unknown never guessed at).
+problems, unknown never guessed at). `src/lib/data/supabase-db.test.ts` covers
+the Supabase adapter's realtime handling against a scripted client: bursts of
+events reload in order, a re-joined channel catches up, and moderation reaches
+anonymous screens.
 
 ---
 
