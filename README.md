@@ -450,6 +450,39 @@ Room states (paused, view-only, suspended) are shown as a pill in the header
 beside the title, never over it, and the QR overlay is opaque so the code, room
 number and link stay readable.
 
+### Fit to screen: the whole session at once
+
+A projector is read by a room, not scrolled by it. The shared screen (and the
+board in the control room) therefore fits itself: the content area is sized in
+`em` of a `--density` multiplier, and `src/components/display/fit.ts` picks the
+largest density at which every card is on screen. Cards, gaps and column widths
+shrink together, so a smaller density puts more cards in each row rather than
+only making them shorter. The header eases off gently with it (never below three
+quarters of its size), and the NGG logo sits in the bottom corner instead of
+taking a row.
+
+- **Scrolling is the exception.** The fit stops at a legibility floor — type of
+  about 0.93% of the screen's height (10px on 1080p, so card text ≈13.5px), and
+  never under 8 physical pixels. Only a session too large to fit above that
+  scrolls. A laptop at 125–150% display scaling gets the same composition as a
+  1080p screen.
+- **Large sessions get compact cards.** From 13 cards the wall wraps into as many
+  cards per row as fit, long answers clamp to a few lines and photos become a
+  wide, short strip. The facilitator can focus any card to show it full size.
+- **Measured capacity** on one screen before any scrolling (mixed short, medium
+  and long answers with some photos):
+
+  | Screen | Wall | Mosaic | Zones (3) | Feed |
+  | --- | --- | --- | --- | --- |
+  | 1920×1080 | 60 | 60–80 | 40–55 | ~9 |
+  | 1280×720 | 40 | 40 | 24–34 | ~8 |
+
+  The feed is a single column by definition and reaches the floor early; for a
+  large group, use the wall or mosaic.
+- It re-fits before paint whenever cards arrive or leave, the layout or room
+  state changes, the board area resizes (including opening and closing the
+  control drawer), or the web font or an image finishes loading.
+
 ## Anonymous screens on Supabase
 
 Supabase Realtime only delivers a row change to a client allowed to read the
@@ -589,7 +622,7 @@ watch URL.
 
 **Projector display**
 - [ ] Card wall / mosaic / live feed all readable from a distance
-- [ ] Handles 1, 5, 20, 100 submissions (the board scrolls above one screen)
+- [ ] Handles 1, 5, 20, 60, 100 submissions: everything on one screen up to ~60 at 1080p; scrolls only beyond
 - [ ] Focus mode, QR overlay, paused/suspended/ended overlays
 - [ ] Same composition at 1280×720, 1920×1080 and 1024×768; nothing tiny on the large screen
 - [ ] The paused pill sits beside the title, never over it; the QR overlay is opaque
@@ -627,7 +660,10 @@ otherwise), and the write-failure classifier in `src/lib/write-errors.test.ts`
 problems, unknown never guessed at). `src/lib/data/supabase-db.test.ts` covers
 the Supabase adapter's realtime handling against a scripted client: bursts of
 events reload in order, a re-joined channel catches up, and moderation reaches
-anonymous screens.
+anonymous screens. `src/components/display/fit.test.ts` covers the shared
+screen's fit-to-screen search against a scripted layout: the largest density
+that fits, the legibility floor on 720p, 1080p, 4K and scaled screens, and how
+few layouts a new card costs.
 
 ---
 

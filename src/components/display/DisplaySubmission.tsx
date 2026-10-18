@@ -42,7 +42,11 @@ interface Props {
    * consistent aspect ratio, and long texts clamp instead of growing the card.
    */
   hug?: boolean;
-  /** Tighter hug variant for pages with 4+ rows so the composition still fits one screen. */
+  /**
+   * Compact variant for a full screen: long text clamps shorter and media
+   * becomes a wide, short strip, so a photo card is not twice the height of the
+   * text cards beside it. The facilitator can focus a card to see it in full.
+   */
   dense?: boolean;
   /**
    * Extra content below the card body — used for the reply thread in the guest
@@ -87,7 +91,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
   // Mindful containers: clamp text so one verbose answer can't dominate the
   // composition — tighter when it captions media, roomier when text-only.
   const clampLines = hug && !focus ? (hasMedia ? (dense ? 2 : 3) : dense ? 4 : 9) : undefined;
-  const mediaMaxHeight = dense ? "min(22vh, 15em)" : "min(34vh, 19em)";
+  const mediaMaxHeight = dense ? "min(16vh, 8.5em)" : "min(34vh, 19em)";
 
   return (
     <div
@@ -131,7 +135,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
             borderRadius: "var(--radius-lg)",
             overflow: "hidden",
             minHeight: hug ? undefined : focus ? "11em" : "6em",
-            aspectRatio: hug ? "4 / 3" : undefined,
+            aspectRatio: hug ? (dense ? "16 / 9" : "4 / 3") : undefined,
             maxHeight: hug ? mediaMaxHeight : undefined,
             flex: submission.text_content || hug ? "none" : 1,
             background: isSeedImage(submission.media_url) ? seedGradientFor(submission.media_url) : undefined,

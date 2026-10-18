@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { Board, LiveRoom, Submission } from "@/lib/types";
 import { t as translate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/react";
@@ -10,6 +10,7 @@ import { formatRoomCode } from "@/lib/utils";
 import { QRCodeCanvas, LiveDot } from "@/components/ui";
 import { IconPause, IconLock, IconClock, IconCheck } from "@/components/ui/icons";
 import { DisplaySubmission, type FacilitatorCardActions } from "./DisplaySubmission";
+import { FIT_ATTR, HEADER_FACTOR, useFitDensity } from "./fit";
 import type { BoardZone } from "@/lib/types";
 
 /** When present, published cards gain on-board hover controls. */
@@ -51,8 +52,9 @@ interface Props {
  * instead of stretching to fill the row — with one or two submissions a plain
  * `1fr` track blows a single card up to the full width of the screen, which is
  * what made the shared board unreadable. Leftover tracks simply stay empty.
- * The shared screen's width is in `em` of the stage unit, so the number of
- * columns stays the same from a 720p projector to a 4K one.
+ * The shared screen's width is in `em` of the stage unit (times the fit
+ * density), so the number of columns follows the screen and grows as the fit
+ * shrinks the cards to keep a large session on one screen.
  */
 const TRACK_MIN = { viewer: "260px", shared: "17em" } as const;
 
@@ -99,13 +101,35 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
   const stage = !viewer;
   const gap = stage ? "1em" : "clamp(12px, 1.4vw, 22px)";
 
-  // Every surface scrolls. The board used to fit one screen at a time and
-  // auto-cycle pages, which hid content nobody could bring back; now the shared
-  // screen holds the whole session and is scrolled to reach the rest of it.
+  // The shared screen shows the whole session at once: the content area is
+  // sized in `em` of a fit density that shrinks every card together until all
+  // of them are on screen (see fit.ts). Scrolling is the last resort, for a
+  // session too large to stay legible on one screen. (It used to auto-cycle
+  // pages, which hid content nobody could bring back.) A guest's phone scrolls
+  // as a page and is never fitted.
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Everything that changes how much room the board takes; resizes, fonts and
+  // images are watched by the hook itself.
+  const layoutKey = [
+    ordered.map((s) => (s.pinned ? `${s.id}*` : s.id)).join(","),
+    room.layout,
+    room.status,
+    room.focused_submission_id,
+    room.qr_overlay_visible,
+    hideJoinChip,
+    board.public_title,
+    board.public_subtitle,
+    board.appearance.font_scale,
+    board.appearance.show_org_logo,
+    board.appearance.client_logo_url,
+    boardZones(board).map((z) => `${z.id}:${z.title}:${z.subtitle}`).join(","),
+  ].join("|");
+  const density = useFitDensity(stage, rootRef, layoutKey);
   const gridColumns = `repeat(auto-fill, minmax(min(100%, ${viewer ? TRACK_MIN.viewer : TRACK_MIN.shared}), 1fr))`;
-  // A comfortable, fixed card size on every surface: with scrolling there is no
-  // reason to shrink text to squeeze one more row onto the screen.
   const cardScale = projector ? baseScale : baseScale * 0.95;
+  // Edge padding eases off with the header as the board fills up.
+  const stagePad = `calc(clamp(20px, 2.4em, 64px) * ${HEADER_FACTOR})`;
+  const cornerLogo = stage && board.appearance.show_org_logo;
 
   const overlay = statusOverlay(room);
 
@@ -115,6 +139,7 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
     // can't be a size container and keeps a fixed base instead.
     <div className={stage ? "ngg-stage" : undefined} style={{ height: viewer ? "auto" : "100%", minHeight: viewer ? "100%" : undefined, width: "100%" }}>
       <div
+        ref={rootRef}
         className={stage ? "ngg-stage-type" : undefined}
         style={{
           // The guest view grows with its content and lets the page scroll; the
@@ -128,23 +153,27 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
           fontFamily: "var(--font-sans)",
           display: "flex",
           flexDirection: "column",
-          padding: viewer ? "clamp(14px, 4vw, 28px)" : "clamp(20px, 2.4em, 64px)",
+          padding: viewer ? "clamp(14px, 4vw, 28px)" : stagePad,
+          // Room for the corner logo, which sits in the padding instead of
+          // taking a row of its own away from the cards.
+          paddingBottom: cornerLogo ? `max(${stagePad}, calc(2.7em * ${HEADER_FACTOR}))` : undefined,
           position: "relative",
           overflow: viewer ? "visible" : "hidden",
-        }}
+          ...(stage ? { "--density": density } : {}),
+        } as React.CSSProperties}
       >
         {/* Header */}
-        <header style={{ display: "flex", alignItems: "flex-start", gap: viewer ? 12 : "1em", marginBottom: viewer ? "clamp(12px, 2vh, 28px)" : "1.1em" }}>
+        <header style={{ display: "flex", alignItems: "flex-start", gap: viewer ? 12 : "1em", marginBottom: viewer ? "clamp(12px, 2vh, 28px)" : `calc(1.1em * ${HEADER_FACTOR})` }}>
           {board.appearance.client_logo_url && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={board.appearance.client_logo_url} alt={t("לוגו לקוח")} style={{ height: viewer ? "clamp(24px, 8vw, 40px)" : "2.6em", background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: viewer ? 6 : "0.3em" }} />
+            <img src={board.appearance.client_logo_url} alt={t("לוגו לקוח")} style={{ height: viewer ? "clamp(24px, 8vw, 40px)" : `calc(2.6em * ${HEADER_FACTOR})`, background: "rgba(255,255,255,.92)", borderRadius: "var(--radius-md)", padding: viewer ? 6 : "0.3em" }} />
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: viewer ? `clamp(21px, ${5 * baseScale}vw, ${34 * baseScale}px)` : `${3.1 * baseScale}em`, fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)", color: textColor }}>
+            <h1 style={{ fontSize: viewer ? `clamp(21px, ${5 * baseScale}vw, ${34 * baseScale}px)` : `calc(${3.1 * baseScale}em * ${HEADER_FACTOR})`, fontWeight: "var(--weight-black)", lineHeight: "var(--leading-tight)", color: textColor }}>
               {board.public_title}
             </h1>
             {board.public_subtitle && (
-              <p style={{ fontSize: viewer ? `clamp(13px, ${3.2 * baseScale}vw, ${17 * baseScale}px)` : `${1.4 * baseScale}em`, color: subColor, marginTop: viewer ? 6 : "0.25em" }}>
+              <p style={{ fontSize: viewer ? `clamp(13px, ${3.2 * baseScale}vw, ${17 * baseScale}px)` : `calc(${1.4 * baseScale}em * ${HEADER_FACTOR})`, color: subColor, marginTop: viewer ? 6 : "0.25em" }}>
                 {board.public_subtitle}
               </p>
             )}
@@ -163,8 +192,8 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
               room on a large screen. */}
           {!hideJoinChip && !viewer && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.3em", flex: "none", background: "rgba(255,255,255,.94)", borderRadius: "var(--radius-lg)", padding: "0.5em 0.6em" }}>
-              <QRCodeCanvas value={joinUrl} size={180} displaySize="5.6em" />
-              <div dir="ltr" style={{ fontSize: "1em", fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".06em", lineHeight: 1.1 }}>
+              <QRCodeCanvas value={joinUrl} size={180} displaySize={`calc(5.6em * ${HEADER_FACTOR})`} />
+              <div dir="ltr" style={{ fontSize: `calc(1em * ${HEADER_FACTOR})`, fontWeight: "var(--weight-black)", color: "var(--neutral-900)", letterSpacing: ".06em", lineHeight: 1.1 }}>
                 {formatRoomCode(room.room_code)}
               </div>
             </div>
@@ -191,9 +220,10 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
           </div>
         )}
 
-        {/* Content area — the page scrolls in guest mode, the panel scrolls on the
-            shared screen and in the control room. Everything sent is reachable. */}
-        <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden" }}>
+        {/* Content area — the page scrolls in guest mode. On the shared screen and
+            in the control room it is fitted (its `em` follows the fit density) and
+            scrolls only past the legibility floor. Everything sent is reachable. */}
+        <div {...(stage ? FIT_ATTR : {})} style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden", fontSize: stage ? "calc(1em * var(--density, 1))" : undefined }}>
           {ordered.length === 0 && !zoned ? (
             <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
           ) : zoned ? (
@@ -208,8 +238,10 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
             </div>
           ) : room.layout === "feed" ? (
             // A feed is one column by definition; on a wide screen it is capped and
-            // centered rather than stretched edge to edge.
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap, maxWidth: viewer ? undefined : "42em", marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
+            // centered rather than stretched edge to edge. The cap ignores the fit
+            // density, so a full feed gets shorter, wider lines rather than a
+            // narrower column.
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap, maxWidth: viewer ? undefined : "calc(42em / var(--density, 1))", marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
               {ordered.map((s) => (
                 <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
               ))}
@@ -226,22 +258,31 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
                 alignContent: "start",
               }}
             >
+              {/* A large session in the control room gets the projector's compact
+                  cards, so one long answer doesn't make its whole row tall. */}
               {ordered.map((s) => (
-                <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+                <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} hug={stage && ordered.length >= WRAP_FROM} dense={stage && ordered.length >= WRAP_FROM} />
               ))}
             </div>
           )}
         </div>
 
-        {/* Footer: org logo. The mark is a square emblem with its wordmark under
-            it, so it needs real height to read as a logo rather than a smudge. */}
-        {board.appearance.show_org_logo && (
-          <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: viewer ? "clamp(10px, 1.6vh, 20px)" : "0.8em" }}>
-            <div style={{ background: v.dark ? "rgba(255,255,255,.92)" : "transparent", borderRadius: "var(--radius-md)", padding: v.dark ? "0.15em" : 0, display: "flex" }}>
-              <Image src="/brand/ngg-logo.png" alt="NGG" width={96} height={96} style={{ height: viewer ? 34 : "2.5em", width: "auto" }} />
+        {/* Org logo. The mark is a square emblem with its wordmark under it, so it
+            needs real height to read as a logo rather than a smudge. On the shared
+            screen it sits in the bottom padding, on the physical right (clear of
+            the control room's drawer handle on the left), instead of a footer row
+            that would cost the cards a row. A guest's page keeps it in a footer. */}
+        {board.appearance.show_org_logo && (cornerLogo ? (
+          <div style={{ position: "absolute", bottom: `calc(0.45em * ${HEADER_FACTOR})`, right: stagePad, background: v.dark ? "rgba(255,255,255,.92)" : "transparent", borderRadius: "var(--radius-md)", padding: v.dark ? "0.12em" : 0, display: "flex" }}>
+            <Image src="/brand/ngg-logo.png" alt="NGG" width={96} height={96} style={{ height: `calc(2em * ${HEADER_FACTOR})`, width: "auto" }} />
+          </div>
+        ) : (
+          <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: "clamp(10px, 1.6vh, 20px)" }}>
+            <div style={{ background: v.dark ? "rgba(255,255,255,.92)" : "transparent", borderRadius: "var(--radius-md)", padding: v.dark ? 3 : 0, display: "flex" }}>
+              <Image src="/brand/ngg-logo.png" alt="NGG" width={96} height={96} style={{ height: 34, width: "auto" }} />
             </div>
           </footer>
-        )}
+        ))}
 
         {/* Focus mode overlay — projector/control room only. A guest keeps their
             own place in the board instead of having the facilitator's highlight
@@ -288,6 +329,14 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
   );
 }
 
+/**
+ * Past this many cards the wall stops composing fixed rows and wraps instead,
+ * so the number of cards per row follows the fit density: as the session grows
+ * the cards shrink and each row takes more of them, rather than the wall only
+ * growing taller.
+ */
+const WRAP_FROM = 13;
+
 /** Preferred item count in the widest row of the balanced projector wall. */
 function balancedColumns(n: number): number {
   if (n <= 3) return Math.max(n, 1);
@@ -301,8 +350,8 @@ function balancedColumns(n: number): number {
  * warrants and capped well below the width of the screen — a single submission
  * should read as a card on the board, not as a poster filling it.
  */
-function idealCardWidth(s: Submission): number {
-  if (s.type !== "text" && s.media_url) return 21;
+function idealCardWidth(s: Submission, dense = false): number {
+  if (s.type !== "text" && s.media_url) return dense ? 17 : 21;
   const len = s.text_content?.length ?? 0;
   return len <= 45 ? 15 : len <= 130 ? 19 : 23;
 }
@@ -310,10 +359,12 @@ function idealCardWidth(s: Submission): number {
 /**
  * Shared-screen wall: a balanced, centered composition instead of a stretched
  * grid. Items split into rows whose sizes differ by at most one (a shorter
- * last row sits centered), the block is centered while it fits on one screen
- * and grows into a scroll once it doesn't, and each card takes only the
- * width/height its content warrants — a short quote stays compact, media keeps
- * a consistent frame, nothing balloons to fill a track.
+ * last row sits centered), the block is centered on the screen, and each card
+ * takes only the width/height its content warrants — a short quote stays
+ * compact, media keeps a consistent frame, nothing balloons to fill a track.
+ * A large session wraps into as many cards per row as the screen takes (see
+ * WRAP_FROM), with long answers clamped shorter; the facilitator can focus any
+ * card to read it in full.
  */
 function BalancedWall({
   items,
@@ -327,6 +378,20 @@ function BalancedWall({
   facFor: (s: Submission) => FacilitatorCardActions | undefined;
 }) {
   const n = items.length;
+  const gap = "1em";
+  if (n >= WRAP_FROM) {
+    return (
+      // Cards in a row share its height (stretch), so a full wall reads as tidy
+      // rows instead of a staggered line of different heights.
+      <div style={{ minHeight: "100%", display: "flex", flexWrap: "wrap", justifyContent: "center", alignContent: "center", alignItems: "stretch", gap }}>
+        {items.map((s) => (
+          <div key={s.id} style={{ flex: `0 1 ${idealCardWidth(s, true)}em`, minWidth: 0, display: "flex", justifyContent: "center" }}>
+            <DisplaySubmission submission={s} board={board} scale={scale} facilitator={facFor(s)} hug dense />
+          </div>
+        ))}
+      </div>
+    );
+  }
   const cols = balancedColumns(n);
   const rowCount = Math.max(1, Math.ceil(n / cols));
   // Even distribution: 7 items in rows of ≤4 become [4,3], 10 become [4,3,3].
@@ -339,11 +404,10 @@ function BalancedWall({
     rows.push(items.slice(idx, idx + size));
     idx += size;
   }
-  const gap = "1em";
   return (
     // minHeight rather than height: the composition centres itself on a
-    // half-empty board and grows past the screen — scrolled, not truncated —
-    // once the session fills it.
+    // half-empty board, and can still grow past the screen — scrolled, not
+    // truncated — if a session is too large for the fit to keep on one screen.
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap }}>
       {rows.map((row, ri) => (
         <div key={ri} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap, minHeight: 0 }}>
@@ -396,7 +460,9 @@ function ZonedContent({
   const headerColor = dark ? "#fff" : "var(--neutral-950)";
   const subColor = dark ? "rgba(255,255,255,.72)" : "var(--neutral-700)";
   const divider = dark ? "rgba(255,255,255,.16)" : "rgba(8,8,16,.12)";
-  const zoneScale = viewer ? scale : scale * (zones.length >= 3 ? 0.8 : 0.9);
+  // No extra shrink for zones on the shared screen: the fit sizes every card
+  // there, and shrinking zones on top of it pushed their text under the floor.
+  const zoneScale = scale;
 
   return (
     // An explicit 100% row (rather than the default content-sized one) is what
@@ -408,16 +474,32 @@ function ZonedContent({
         return (
           <div key={z.id} style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, height: viewer ? undefined : "100%", borderInlineStart: !viewer && i > 0 ? `1px solid ${divider}` : "none", paddingInlineStart: !viewer && i > 0 ? "0.8em" : 0 }}>
             <div style={{ flex: "none", paddingBottom: 10, marginBottom: 10, borderBottom: `2px solid ${divider}` }}>
-              <div style={{ fontSize: viewer ? `clamp(16px, ${4 * scale}vw, ${22 * scale}px)` : `${1.35 * scale}em`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
+              {/* Zone titles are headings, not content: on the shared screen they
+                  ease off with the page header rather than shrinking with the cards
+                  (dividing by the density undoes the content area's scaling). */}
+              <div style={{ fontSize: viewer ? `clamp(16px, ${4 * scale}vw, ${22 * scale}px)` : `calc(${1.35 * scale}em * ${HEADER_FACTOR} / var(--density, 1))`, fontWeight: "var(--weight-black)", color: headerColor, lineHeight: "var(--leading-tight)" }}>
                 {z.title || t("אזור {number}", { number: i + 1 })}
               </div>
-              {z.subtitle && <div style={{ fontSize: viewer ? `clamp(12px, ${3 * scale}vw, ${15 * scale}px)` : `${0.85 * scale}em`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
+              {z.subtitle && <div style={{ fontSize: viewer ? `clamp(12px, ${3 * scale}vw, ${15 * scale}px)` : `calc(${0.85 * scale}em * ${HEADER_FACTOR} / var(--density, 1))`, color: subColor, marginTop: 2 }}>{z.subtitle}</div>}
             </div>
-            {/* Each zone column scrolls on its own so a busy zone never truncates
-                its cards or pushes the quieter zones off the screen. */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden", display: "flex", flexDirection: "column", gap: viewer ? "clamp(10px, 1vw, 16px)" : "0.8em" }}>
+            {/* Each zone column is fitted with the rest of the board, and on the
+                shared screen its cards wrap into more columns as they shrink, so a
+                busy zone stays on screen. Past the legibility floor it scrolls on
+                its own rather than pushing the quieter zones off the screen. */}
+            <div
+              {...(viewer ? {} : FIT_ATTR)}
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: viewer ? "visible" : "auto",
+                overflowX: viewer ? "visible" : "hidden",
+                ...(viewer
+                  ? { display: "flex", flexDirection: "column", gap: "clamp(10px, 1vw, 16px)" }
+                  : { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 16em), 1fr))", gap: "0.8em", alignContent: "start", alignItems: "start" }),
+              }}
+            >
               {items.length === 0 ? (
-                <div style={{ color: subColor, fontSize: viewer ? `clamp(12px, 1vw, ${16 * scale}px)` : `${0.85 * scale}em`, opacity: 0.7, paddingTop: 8 }}>{t("עדיין אין תוכן באזור זה")}</div>
+                <div style={{ color: subColor, fontSize: viewer ? `clamp(12px, 1vw, ${16 * scale}px)` : `${0.85 * scale}em`, opacity: 0.7, paddingTop: 8, gridColumn: "1 / -1" }}>{t("עדיין אין תוכן באזור זה")}</div>
               ) : (
                 items.map((s) => <DisplaySubmission key={s.id} submission={s} board={board} scale={zoneScale} facilitator={facFor(s)} hug={!viewer} dense={projector && zones.length >= 3} footer={renderFooter?.(s)} />)
               )}
