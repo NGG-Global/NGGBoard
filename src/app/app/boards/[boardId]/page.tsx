@@ -37,7 +37,10 @@ export default function BoardDetailPage({ params }: { params: Promise<{ boardId:
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const board = useLiveQuery("board-list", () => db.getBoard(boardId));
-  const sessions = useLiveQuery({ room: boardId }, () => db.getSessionSummaries(boardId));
+  // Board-wide: past sessions' rows and content load asynchronously and
+  // announce themselves on "board-list". A room scope keyed by the board id
+  // never fired, so the history kept whatever it showed first (often zeros).
+  const sessions = useLiveQuery("board-list", () => db.getSessionSummaries(boardId));
   const activeRoom = useLiveQuery("board-list", () => db.getActiveRoomForBoard(boardId));
 
   if (!board) {

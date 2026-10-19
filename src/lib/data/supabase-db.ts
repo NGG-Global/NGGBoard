@@ -57,6 +57,30 @@ class SupabaseDB {
   private orgHydrated = false;
   private loadingRooms = new Set<string>();
   private channels = new Map<string, RealtimeChannel>();
+  /**
+   * Rooms whose full set of submissions is in the cache. A cached room row is
+   * not enough: the dashboard, the active-rooms list and a board's session
+   * history all load room rows in bulk without their content. Treating "row
+   * cached" as "room loaded" made every stored session look empty afterwards —
+   * its summary showed no content, its history row counted 0 items, and a
+   * control room reopened from the board page showed a blank board that no
+   * longer received new posts.
+   */
+  private roomsWithContent = new Set<string>();
+  /** Content reads started only to count a room's posts (no realtime channel). */
+  private contentLoading = new Set<string>();
+  /**
+   * When a room's content was last asked for. A read that fails (offline, a
+   * refused query) leaves the room unloaded, and every render asks again; the
+   * cooldown keeps that from turning into a loop of failing requests.
+   */
+  private lastContentAttempt = new Map<string, number>();
+  private mayAttempt(key: string): boolean {
+    const now = Date.now();
+    if (now - (this.lastContentAttempt.get(key) ?? 0) < CONTENT_RETRY_MS) return false;
+    this.lastContentAttempt.set(key, now);
+    return true;
+  }
 
   // ---- signal plumbing ------------------------------------------------------
   subscribe(scope: RealtimeScope, cb: (s: RealtimeSignal) => void): () => void {
@@ -152,9 +176,19 @@ class SupabaseDB {
    * *concurrent* lookups (clearing the flag in `finally`), never permanently
    * caching a "not found", so the page recovers on its own once the room lands.
    */
+  /** The room is cached with everything a facilitator's screen needs: content and a live channel. */
+  private roomReady(roomId: string): boolean {
+    return this.roomsWithContent.has(roomId) && this.channels.has(roomId);
+  }
+  /** The room behind a public id is loaded for whoever is looking: the full room, or the participant-safe view. */
+  private publicReady(publicId: string): boolean {
+    const room = this.cache.rooms.find((r) => r.public_id === publicId);
+    return !!room && (this.roomReady(room.id) || this.channels.has(publicId));
+  }
+
   private async ensureRoomByPublicId(publicId: string) {
     const key = `pub:${publicId}`;
-    if (this.loadingRooms.has(key) || this.cache.rooms.some((r) => r.public_id === publicId)) return;
+    if (this.loadingRooms.has(key) || this.publicReady(publicId)) return;
     this.loadingRooms.add(key);
     const sb = getSupabase();
     if (!sb) {
@@ -163,9 +197,11 @@ class SupabaseDB {
     }
     try {
       for (let attempt = 0; attempt < 6; attempt++) {
-        // Authenticated path: direct table read (org-scoped by RLS).
+        // Authenticated path: direct table read (org-scoped by RLS), or the
+        // row a bulk load already cached — whose content still needs reading.
         if (this.currentProfileId) {
-          const { data: room } = await sb.from("live_rooms").select("*").eq("public_id", publicId).maybeSingle();
+          const cached = this.cache.rooms.find((r) => r.public_id === publicId && r.organization_id !== "public");
+          const room = cached ?? (await sb.from("live_rooms").select("*").eq("public_id", publicId).maybeSingle()).data;
           if (room) return void (await this.loadRoomGraph(room as LiveRoom));
         }
         // Anonymous path: the participant-safe view synthesises Board + Room.
@@ -188,7 +224,7 @@ class SupabaseDB {
   }
 
   private async ensureRoomById(roomId: string) {
-    if (this.loadingRooms.has(roomId) || this.cache.rooms.some((r) => r.id === roomId)) return;
+    if (this.loadingRooms.has(roomId) || this.roomReady(roomId) || !this.mayAttempt(`room:${roomId}`)) return;
     this.loadingRooms.add(roomId);
     const sb = getSupabase();
     if (!sb) {
@@ -196,6 +232,9 @@ class SupabaseDB {
       return;
     }
     try {
+      // A row a bulk load cached: only its content is missing.
+      const cached = this.cache.rooms.find((r) => r.id === roomId);
+      if (cached) return void (await this.loadRoomGraph(cached));
       for (let attempt = 0; attempt < 6; attempt++) {
         const { data: room } = await sb.from("live_rooms").select("*").eq("id", roomId).maybeSingle();
         if (room) return void (await this.loadRoomGraph(room as LiveRoom));
@@ -260,7 +299,25 @@ class SupabaseDB {
     if (data) {
       this.cache.submissions = this.cache.submissions.filter((s) => s.room_id !== roomId).concat(data as Submission[]);
       this.signalRoom("submissions", roomId);
+      if (all) {
+        this.roomsWithContent.add(roomId);
+        // Session history, the dashboard's last-session line and the
+        // collection counters count from the cache and listen board-wide.
+        this.emit("board-list");
+      }
     }
+  }
+
+  /**
+   * Read a room's content just to count it (session history, dashboard), with
+   * no realtime channel: a board page listing twenty past sessions shouldn't
+   * open twenty subscriptions.
+   */
+  private ensureRoomContent(roomId: string) {
+    if (!this.currentProfileId || this.roomsWithContent.has(roomId) || this.contentLoading.has(roomId)) return;
+    if (!this.mayAttempt(`content:${roomId}`)) return;
+    this.contentLoading.add(roomId);
+    void this.loadSubmissions(roomId, true).finally(() => this.contentLoading.delete(roomId));
   }
 
   private absorbPublicView(v: PublicViewRow) {
@@ -591,6 +648,7 @@ class SupabaseDB {
       .filter((r) => r.board_id === boardId && r.status === "ended")
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
     if (!last) return null;
+    this.ensureRoomContent(last.id);
     return {
       participants: last.participant_count,
       items: this.cache.submissions.filter((s) => s.room_id === last.id && s.status !== "deleted").length,
@@ -675,12 +733,17 @@ class SupabaseDB {
 
   // ---- rooms ----------------------------------------------------------------
   getRoom(id: string): LiveRoom | null {
-    if (!this.cache.rooms.some((r) => r.id === id)) void this.ensureRoomById(id);
-    return this.cache.rooms.find((r) => r.id === id) ?? null;
+    const cached = this.cache.rooms.find((r) => r.id === id) ?? null;
+    // A facilitator's screen needs the room's content and channel, not just its
+    // row (see `roomsWithContent`).
+    if (!cached || (this.currentProfileId && !this.roomReady(id))) void this.ensureRoomById(id);
+    return cached;
   }
   getRoomByPublicId(publicId: string): LiveRoom | null {
     const found = this.cache.rooms.find((r) => r.public_id === publicId);
-    if (!found) void this.ensureRoomByPublicId(publicId);
+    // Also a room only listed so far — e.g. found by its code on the join page,
+    // which carries no content and no channel for room-state changes.
+    if (!found || !this.publicReady(publicId)) void this.ensureRoomByPublicId(publicId);
     return found ?? null;
   }
   findRoomByCode(code: string): LiveRoom | null {
@@ -742,10 +805,10 @@ class SupabaseDB {
   }
 
   /**
-   * NOTE: `opts.content === "continue"` is accepted for signature parity with
-   * LocalDB but is not implemented here — this backend does not copy a previous
-   * session's submissions into the new room. Pre-existing gap, called out so it
-   * isn't mistaken for working.
+   * `opts.content === "continue"` carries the board's most recent ended
+   * session's participant posts into the new room, as LocalDB does. It used to
+   * be accepted and silently ignored here, while the UI announced "a new
+   * session opened with the content collected" over an empty room.
    */
   activateRoom(
     boardId: string,
@@ -775,6 +838,8 @@ class SupabaseDB {
       created_at: nowIso,
     };
     this.cache.rooms.unshift(room);
+    // Brand new: there is no stored content for the cache to be missing.
+    this.roomsWithContent.add(room.id);
     this.updateBoard(boardId, { last_activated_at: nowIso });
     this.subscribeRoom(room.id);
     this.emit("board-list");
@@ -784,8 +849,49 @@ class SupabaseDB {
       else if (this.currentProfileId) void sb.from("room_facilitators").insert({ room_id: room.id, profile_id: this.currentProfileId });
       // Only after the room row exists — the submissions reference it.
       if (!error) this.materializeSeedPosts(room, board, nowIso);
+      if (!error && opts.content === "continue") void this.carryForward(room);
     });
     return room;
+  }
+
+  /**
+   * Copy the participants' posts of the board's most recent ended session into
+   * `room`. Read from the server rather than the cache, which may never have
+   * loaded that session's content. Facilitator posts are left out: the new room
+   * gets the board's current opening content fresh (see materializeSeedPosts),
+   * so carrying the old copies would double every guidance card.
+   */
+  private async carryForward(room: LiveRoom) {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data: prior } = await sb
+      .from("live_rooms")
+      .select("*")
+      .eq("board_id", room.board_id)
+      .eq("status", "ended")
+      .neq("id", room.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!prior) return;
+    const { data: rows, error: readError } = await sb.from("submissions").select("*").eq("room_id", (prior as LiveRoom).id).neq("status", "deleted");
+    if (readError || !rows) return void console.warn("continue session", readError?.message);
+    const carried = (rows as Submission[])
+      .filter((s) => !s.author_profile_id && s.status !== "deleted")
+      .map((s) => ({ ...s, id: uuid(), room_id: room.id }));
+    if (!carried.length) return;
+    this.cache.submissions.push(...carried);
+    this.signalRoom("submissions", room.id);
+    this.emit("board-list");
+    const { error } = await sb.from("submissions").insert(carried);
+    if (error) {
+      // Not stored: take the copies back out rather than show content that a
+      // reload would lose.
+      const ids = new Set(carried.map((s) => s.id));
+      this.cache.submissions = this.cache.submissions.filter((s) => !ids.has(s.id));
+      this.signalRoom("submissions", room.id);
+      console.warn("continue session", error.message);
+    }
   }
 
   /**
@@ -857,8 +963,36 @@ class SupabaseDB {
     const due = dueRoomStatus(room, nowMs);
     if (due) return this.setRoomStatus(id, due);
     if (!accruesIdleTime(room)) return room;
-    if (nowMs - new Date(room.last_activity_at).getTime() >= INACTIVITY_SUSPEND_MS) return this.setRoomStatus(id, "suspended");
+    if (nowMs - new Date(room.last_activity_at).getTime() >= INACTIVITY_SUSPEND_MS) void this.suspendIfIdle(id, nowMs);
     return room;
+  }
+
+  /**
+   * Suspend only once the server confirms the room has been idle. The cached
+   * `last_activity_at` is only as fresh as the room's realtime channel: a
+   * control room whose channel never opened (or dropped) saw a busy room as
+   * idle, suspended it mid-session, and the server then refused every
+   * participant post until someone noticed. The scheduled server sweep stays
+   * the authoritative suspender; this is the in-tab backstop.
+   */
+  private idleChecks = new Set<string>();
+  private async suspendIfIdle(id: string, nowMs: number) {
+    const sb = getSupabase();
+    if (!sb || this.idleChecks.has(id)) return;
+    this.idleChecks.add(id);
+    try {
+      const { data } = await sb.from("live_rooms").select("*").eq("id", id).maybeSingle();
+      if (!data) return;
+      this.upsertRoom(data as LiveRoom);
+      const fresh = this.cache.rooms.find((r) => r.id === id);
+      if (fresh && accruesIdleTime(fresh) && nowMs - new Date(fresh.last_activity_at).getTime() >= INACTIVITY_SUSPEND_MS) {
+        this.setRoomStatus(id, "suspended");
+      } else {
+        this.signalRoom("room", id);
+      }
+    } finally {
+      this.idleChecks.delete(id);
+    }
   }
 
   /** Change an open collection's deadline (or clear it with null). */
@@ -1026,12 +1160,14 @@ class SupabaseDB {
     return this.listSubmissions(roomId).filter((s) => s.participant_session_id === sessionId);
   }
   countByStatus(roomId: string): Record<SubmissionStatus, number> {
+    this.ensureRoomContent(roomId);
     const acc: Record<SubmissionStatus, number> = { pending: 0, published: 0, hidden: 0, rejected: 0, deleted: 0 };
     for (const s of this.cache.submissions) if (s.room_id === roomId) acc[s.status]++;
     return acc;
   }
   /** Participant contributions only — the facilitator's own posts don't count. */
   countContributions(roomId: string): number {
+    this.ensureRoomContent(roomId);
     return this.cache.submissions.filter((s) => s.room_id === roomId && countsAsContribution(s)).length;
   }
 
@@ -1278,6 +1414,7 @@ class SupabaseDB {
   // ---- history --------------------------------------------------------------
   getSessionSummaries(boardId: string): SessionSummary[] {
     return this.listRoomsForBoard(boardId).map((room) => {
+      this.ensureRoomContent(room.id);
       const subs = this.cache.submissions.filter((s) => s.room_id === room.id && s.status !== "deleted");
       return {
         room,
@@ -1295,16 +1432,20 @@ class SupabaseDB {
 
   resetToSeed() {
     this.cache = emptyDb();
+    this.roomsWithContent.clear();
+    this.lastContentAttempt.clear();
     this.orgHydrated = false;
     this.activeHydrated = false;
     this.commentsLoaded.clear();
     void this.hydrateOrg(true);
   }
-  resetMemoryForTest() { this.cache = emptyDb(); this.commentsLoaded.clear(); }
+  resetMemoryForTest() { this.cache = emptyDb(); this.commentsLoaded.clear(); this.roomsWithContent.clear(); this.lastContentAttempt.clear(); }
 }
 
 // ---- helpers ----------------------------------------------------------------
 const ACTIVE_STATES = ["active", "paused", "read_only", "suspended"];
+/** Minimum gap between attempts to load a room's content that hasn't arrived. */
+const CONTENT_RETRY_MS = 4000;
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
