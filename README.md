@@ -151,6 +151,9 @@ src/lib/data/realtime.ts        ← BroadcastChannel realtime bus
 > simulations. Board access still comes only from a `board.profiles` row, which
 > is created for @nggconsult.com accounts only.
 
+The one-off move from the old standalone project into the shared one (data,
+accounts, configuration) is the runbook in `ops/shared-supabase/README.md`.
+
 The app is architected so this is an isolated swap — screens don't change. The
 full step-by-step, for reference / a fresh project:
 
