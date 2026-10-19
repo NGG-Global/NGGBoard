@@ -378,6 +378,69 @@ Any post on the board can be replied to (`submission_comments`).
   (no key at all) must not accept them — fail-open there would silently switch
   the feature on for every existing board.
 
+## Sessions that looked empty on Supabase
+
+**Symptom (reported after live sessions):** a session's content was missing
+from its summary (`/results/<roomId>`), the board's session history counted
+0 items, and a control room reopened from the dashboard or the board page
+showed a blank board. Several sessions had also been suspended mid-session.
+
+**Cause.** `SupabaseDB` serves reads from a cache and loads a room's content
+the first time the room is asked for — but it decided "asked for before" by
+whether the room *row* was cached. The dashboard, the active-rooms list and a
+board's session history all cache room rows in bulk, without their content.
+After visiting any of them, the summary, the history counts and the control
+room found the row, assumed the room was loaded, and never read its posts or
+opened its realtime channel. Two consequences:
+
+1. **Stored content looked missing.** It was in the database all along; it was
+   only never read. Pause, suspend and end never delete content (only an
+   explicit delete, "reset board", "reset session" or a participant removing
+   their own post does).
+2. **Busy rooms were suspended, and posts then refused.** A control room with no
+   channel never heard participants posting, so its idle timer ran on a stale
+   `last_activity_at`, and 30 minutes later it suspended the room in the
+   database. From then until someone reactivated it, the server refused every
+   participant post (`room_not_accepting`). **Those posts were never stored and
+   cannot be recovered.**
+
+**Fix.** A room counts as loaded only once its content is in the cache
+(`roomsWithContent`) and, for a facilitator's screen, its channel is open.
+Session history, the dashboard's last-session line and the collection counters
+read a room's content to count it (without opening a channel), and the board
+page now refreshes when it arrives. The in-tab inactivity check re-reads the
+room from the server before suspending, so a stale cache can no longer suspend
+a busy room; the scheduled server sweep remains the authoritative suspender.
+A failed content read is retried after a few seconds rather than on every
+render.
+
+Also fixed in the same pass: **"continue a previous session" now carries the
+previous session's content on Supabase too.** It used to create an empty room
+while the UI announced "a new session opened with the content collected". It
+copies the participants' posts of the board's most recent ended session, as the
+local backend does.
+
+**Recovering an affected session.** Open its summary (board → session history →
+the session) on a build with this fix; the stored content appears, and
+**ייצוא כתמונה** exports it as a PNG. To check what is stored for recent
+sessions, run this read-only query in the Supabase SQL editor:
+
+```sql
+select b.public_title, r.session_label, r.started_at, r.ended_at, r.status,
+       r.participant_count,
+       count(s.id) filter (where s.status = 'published') as published,
+       count(s.id) filter (where s.status in ('pending', 'hidden', 'rejected')) as not_published
+from live_rooms r
+join boards b on b.id = r.board_id
+left join submissions s on s.room_id = r.id
+where r.started_at >= now() - interval '2 days'
+group by r.id, b.public_title
+order by r.started_at desc;
+```
+
+The summary shows **published** content only; posts still `pending` on an
+approval board (never approved) are counted in `not_published`.
+
 ## When a participant's submission is refused
 
 Participant writes on the Supabase backend are optimistic: the row lands in the
@@ -680,9 +743,6 @@ few layouts a new card costs.
   Storage removes this limit.
 - Sharing implements private / selected / organization (team & link-only are
   modeled but not fully surfaced in the UI).
-- **"Continue a previous session" is local-backend only.** `SupabaseDB.activateRoom`
-  accepts the option for signature parity but does not copy the prior room's
-  submissions. Pre-existing gap, not introduced by the open-collection work.
 - Two remaining transitive npm audit advisories come from Next.js's bundled
   build dependencies; the only "fix" downgrades Next to v9 (a breaking
   regression), so we stay on the latest patched 15.x line.
