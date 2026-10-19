@@ -14,9 +14,11 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Board, LiveRoom, Submission } from "@/lib/types";
 import type { RealtimeScope, RealtimeSignal } from "./realtime";
 
-const supabase: SupabaseClient = createClient(
+// The app's tables live in the `board` schema of the shared NGG project.
+const supabase: SupabaseClient<any, "board"> = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { db: { schema: "board" } },
 );
 
 export class SupabaseDB {
@@ -27,12 +29,12 @@ export class SupabaseDB {
       .channel(roomId ? `room:${roomId}` : "boards")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "submissions", filter: roomId ? `room_id=eq.${roomId}` : undefined },
+        { event: "*", schema: "board", table: "submissions", filter: roomId ? `room_id=eq.${roomId}` : undefined },
         () => cb({ kind: "submissions", roomId: roomId ?? undefined, at: Date.now() }),
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "live_rooms", filter: roomId ? `id=eq.${roomId}` : undefined },
+        { event: "*", schema: "board", table: "live_rooms", filter: roomId ? `id=eq.${roomId}` : undefined },
         () => cb({ kind: "room", roomId: roomId ?? undefined, at: Date.now() }),
       )
       .subscribe();

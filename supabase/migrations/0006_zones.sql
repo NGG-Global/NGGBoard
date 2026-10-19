@@ -7,12 +7,15 @@
 -- this alone is enough even if 0004 was skipped. Run AFTER 0002_rls.sql.
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 alter table boards      add column if not exists zones   jsonb not null default '[]'::jsonb;
 alter table submissions add column if not exists zone_id text;
 
 -- join_room (client-supplied session id) — same as 0004, safe to re-run.
 create or replace function join_room(p_public_id text, p_display_name text, p_session_id uuid)
-returns uuid language plpgsql security definer set search_path = public as $$
+returns uuid language plpgsql security definer set search_path = board as $$
 declare v_room live_rooms%rowtype; v_inserted boolean := false;
 begin
   select * into v_room from live_rooms where public_id = p_public_id;
@@ -33,7 +36,7 @@ end; $$;
 create or replace function create_submission(
   p_id uuid, p_public_id text, p_session_id uuid, p_type submission_type,
   p_text text, p_media_url text, p_anonymous boolean, p_display_name text, p_zone_id text
-) returns uuid language plpgsql security definer set search_path = public as $$
+) returns uuid language plpgsql security definer set search_path = board as $$
 declare v_room live_rooms%rowtype; v_board boards%rowtype; v_mode text; v_status submission_status; v_last timestamptz;
 begin
   select * into v_room from live_rooms where public_id = p_public_id;

@@ -5,7 +5,7 @@ import { t } from "@/lib/i18n";
 import type { Profile } from "@/lib/types";
 import { db, CURRENT_USER_ID } from "@/lib/data";
 import { supabaseDb } from "@/lib/data/supabase-db";
-import { getSupabase, USE_SUPABASE } from "@/lib/supabase";
+import { appOrigin, getSupabase, USE_SUPABASE } from "@/lib/supabase";
 
 /**
  * Backend-aware organizational auth.
@@ -132,7 +132,9 @@ export async function signUp(email: string, password: string, fullName: string):
   const { data, error } = await sb.auth.signUp({
     email: email.trim(),
     password,
-    options: { data: { full_name: fullName.trim() } },
+    // The Supabase project is shared by several NGG apps and has a single Site
+    // URL, so the confirmation link must name this app explicitly.
+    options: { data: { full_name: fullName.trim() }, emailRedirectTo: appOrigin() },
   });
   if (error) return { ok: false, error: translateAuthError(error.message) };
   // If email confirmation is required, there is no session yet.

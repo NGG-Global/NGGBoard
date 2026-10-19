@@ -8,6 +8,9 @@
 -- Idempotent; drops no data.
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 create table if not exists folders (
   id               uuid primary key default gen_random_uuid(),
   organization_id  uuid not null references organizations (id) on delete cascade,
@@ -34,8 +37,8 @@ begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
      and not exists (
        select 1 from pg_publication_tables
-       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'folders'
+       where pubname = 'supabase_realtime' and schemaname = 'board' and tablename = 'folders'
      ) then
-    alter publication supabase_realtime add table public.folders;
+    alter publication supabase_realtime add table board.folders;
   end if;
 end $$;

@@ -15,9 +15,12 @@
 --   where lower(split_part(email, '@', 2)) <> 'nggconsult.com';
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 create or replace function handle_new_user()
 returns trigger
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = board as $$
 declare
   v_org_id uuid;
   v_is_first boolean;

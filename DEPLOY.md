@@ -22,7 +22,7 @@ Preview if you want preview deploys to hit Supabase too):
 | Name | Value |
 |---|---|
 | `NEXT_PUBLIC_DATA_BACKEND` | `supabase` |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://ljrnmcpnbduuzjjnmdpw.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://xyuqeivoplqjfnnfnagh.supabase.co` (the shared NGG project) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *your anon (public) key* |
 | `NEXT_PUBLIC_APP_URL` | your Vercel URL, e.g. `https://ngg-boards.vercel.app` |
 | `GIPHY_API_KEY` | *your Giphy API key* (server-only secret — enables the participant GIF/sticker picker) |
@@ -37,7 +37,15 @@ renamed with a `NEXT_PUBLIC_` prefix. Add the Supabase service-role key
 **only** when you enable the shared password, and never with a `NEXT_PUBLIC_`
 prefix — it bypasses row-level security.
 
-### Shared organisation password (optional)
+### Shared organisation password (optional — not recommended on the shared project)
+
+> **Read this first.** NGG Boards shares its Supabase project, and so its
+> accounts, with the quiz and the simulation apps. A session the shared
+> password hands out is a full session for that colleague's account in
+> **every** NGG app — including the simulation admin, which holds participant
+> details and call transcripts. Keep `ORG_SHARED_PASSWORD` unset unless that
+> trade-off has been accepted explicitly; per-user passwords then apply, and
+> each colleague signs in with the same account they use in the other apps.
 
 With `ORG_SHARED_PASSWORD` set, the login screen accepts any `@nggconsult.com`
 address with that single password (`/api/auth/org-login`); the account is
@@ -63,18 +71,19 @@ Leave `ORG_SHARED_PASSWORD` unset to keep per-user Supabase passwords.
 
 In the Supabase dashboard → **Authentication → URL Configuration**:
 
-- **Site URL:** your Vercel production URL.
+- **Site URL:** shared by every NGG app — leave it as it is.
 - **Redirect URLs:** add the Vercel URL (and any preview domains) so signup
-  confirmation / magic-link emails return users to the app.
+  confirmation emails return users to this app (sign-up passes its own origin
+  as `emailRedirectTo`).
 
 ## 4. Deploy & verify
 
 1. Click **Deploy**. First build takes ~1–2 minutes.
 2. Open the URL → you should land on the login screen (Supabase mode).
 3. Complete the four Supabase setup steps from the README's *Hooking up
-   Supabase* section (run migrations `0004`, `0005` and `0011`, confirm the two tables are
-   in the `supabase_realtime` publication, confirm the signup email or enable
-   auto-confirm).
+   Supabase* section (run every migration from `0000` in order, add `board` to
+   the exposed schemas, confirm the live tables are in the `supabase_realtime`
+   publication, confirm the signup email).
 4. Sign up → create and activate a board → open the display and join from a
    phone. Submissions should flow live across devices.
 

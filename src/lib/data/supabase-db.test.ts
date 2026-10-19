@@ -127,7 +127,13 @@ const fakeClient = {
     const list: { table: string; cb: (p: unknown) => void }[] = [];
     channelHandlers.set(name, list);
     const ch = {
-      on: (_type: string, filter: { table: string }, cb: (p: unknown) => void) => (list.push({ table: filter.table, cb }), ch),
+      on: (_type: string, filter: { schema: string; table: string }, cb: (p: unknown) => void) => {
+        // The app lives in its own schema of the shared NGG project; a
+        // subscription on any other schema would never receive a change.
+        expect(filter.schema).toBe("board");
+        list.push({ table: filter.table, cb });
+        return ch;
+      },
       subscribe: (cb?: (status: string) => void) => {
         if (cb) subscribeCallbacks.set(name, cb);
         return ch;
@@ -138,6 +144,7 @@ const fakeClient = {
 };
 
 vi.mock("@/lib/supabase", () => ({
+  DB_SCHEMA: "board",
   USE_SUPABASE: true,
   getSupabase: () => fakeClient,
   appOrigin: () => "http://localhost",

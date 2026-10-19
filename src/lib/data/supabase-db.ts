@@ -21,7 +21,7 @@ import type {
 } from "@/lib/types";
 import { INACTIVITY_SUSPEND_MS, DEFAULT_IMAGE_SIZE_LIMIT_MB, DEFAULT_TEXT_CHAR_LIMIT } from "@/lib/constants";
 import { generateRoomCode, minutesBetween, randomId, uuid } from "@/lib/utils";
-import { getSupabase } from "@/lib/supabase";
+import { DB_SCHEMA, getSupabase } from "@/lib/supabase";
 import { normalizeBoard } from "@/lib/board-visuals";
 import { accruesIdleTime, dueRoomStatus, isOpenRoom, normalizeRoom } from "@/lib/rooms";
 import { countsAsContribution, usableSeedPosts } from "@/lib/posts";
@@ -143,13 +143,13 @@ class SupabaseDB {
     if (!sb || this.boardListSubscribed) return;
     this.boardListSubscribed = true;
     sb.channel("board-list")
-      .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms" }, (p) => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "live_rooms" }, (p) => {
         const row = (p.new && (p.new as LiveRoom).id ? p.new : p.old) as LiveRoom | undefined;
         if (p.eventType === "DELETE" && row) this.cache.rooms = this.cache.rooms.filter((r) => r.id !== row.id);
         else if (row?.id) this.upsertRoom(row);
         this.emit("board-list");
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "boards" }, (p) => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "boards" }, (p) => {
         if (p.eventType === "DELETE" && p.old && (p.old as Board).id) {
           this.cache.boards = this.cache.boards.filter((b) => b.id !== (p.old as Board).id);
         } else if (p.new && (p.new as Board).id) {
@@ -157,7 +157,7 @@ class SupabaseDB {
         }
         this.emit("board-list");
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "folders" }, (p) => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "folders" }, (p) => {
         if (p.eventType === "DELETE" && p.old && (p.old as Folder).id) {
           this.cache.folders = this.cache.folders.filter((f) => f.id !== (p.old as Folder).id);
         } else if (p.new && (p.new as Folder).id) {
@@ -384,17 +384,17 @@ class SupabaseDB {
     let joined = false;
     const ch = sb
       .channel(`room:${roomId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "submissions", filter: `room_id=eq.${roomId}` }, () => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "submissions", filter: `room_id=eq.${roomId}` }, () => {
         void this.loadSubmissions(roomId, true);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `id=eq.${roomId}` }, (p) => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "live_rooms", filter: `id=eq.${roomId}` }, (p) => {
         if (p.new) this.upsertRoom(p.new as LiveRoom);
         this.signalRoom("room", roomId);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "participant_sessions", filter: `room_id=eq.${roomId}` }, () => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "participant_sessions", filter: `room_id=eq.${roomId}` }, () => {
         void this.loadParticipants(roomId);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "submission_comments", filter: `room_id=eq.${roomId}` }, () => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "submission_comments", filter: `room_id=eq.${roomId}` }, () => {
         void this.loadComments(roomId);
       })
       .subscribe((status) => {
@@ -444,13 +444,13 @@ class SupabaseDB {
     };
     const ch = sb
       .channel(`pub:${publicId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "submissions", filter: `room_id=eq.${room.id}` }, () => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "submissions", filter: `room_id=eq.${room.id}` }, () => {
         void this.loadSubmissions(room.id, false);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "live_rooms", filter: `public_id=eq.${publicId}` }, () => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "live_rooms", filter: `public_id=eq.${publicId}` }, () => {
         void refresh();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "submission_comments", filter: `room_id=eq.${room.id}` }, () => {
+      .on("postgres_changes", { event: "*", schema: DB_SCHEMA, table: "submission_comments", filter: `room_id=eq.${room.id}` }, () => {
         void this.loadComments(room.id);
       })
       .subscribe((status) => {

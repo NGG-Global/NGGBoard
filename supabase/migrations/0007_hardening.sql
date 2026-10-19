@@ -25,6 +25,9 @@
 -- does not widen that exposure.
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 -- ---- A. Realtime publication (idempotent) ---------------------------------
 do $$
 declare t text;
@@ -35,9 +38,9 @@ begin
   foreach t in array array['submissions','live_rooms','participant_sessions','boards'] loop
     if not exists (
       select 1 from pg_publication_tables
-      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+      where pubname = 'supabase_realtime' and schemaname = 'board' and tablename = t
     ) then
-      execute format('alter publication supabase_realtime add table public.%I', t);
+      execute format('alter publication supabase_realtime add table board.%I', t);
     end if;
   end loop;
 end $$;
@@ -68,7 +71,7 @@ grant select on public_board_view to anon;
 create or replace function create_submission(
   p_id uuid, p_public_id text, p_session_id uuid, p_type submission_type,
   p_text text, p_media_url text, p_anonymous boolean, p_display_name text, p_zone_id text
-) returns uuid language plpgsql security definer set search_path = public as $$
+) returns uuid language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype; v_board boards%rowtype;
   v_mode text; v_status submission_status; v_last timestamptz;
