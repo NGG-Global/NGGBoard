@@ -45,10 +45,13 @@
 --      end of this file, once PART 2's columns exist.)
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 -- ---- A. Room mode + deadline ------------------------------------------------
 do $$
 begin
-  if not exists (select 1 from pg_type where typname = 'room_mode') then
+  if not exists (select 1 from pg_type where typname = 'room_mode' and typnamespace = 'board'::regnamespace) then
     create type room_mode as enum ('live', 'open');
   end if;
 end $$;
@@ -74,7 +77,7 @@ comment on column boards.instructions is
 
 -- ---- C. Inactivity sweep: exempt open rooms, close due ones -----------------
 create or replace function suspend_inactive_rooms()
-returns integer language plpgsql security definer set search_path = public as $$
+returns integer language plpgsql security definer set search_path = board as $$
 declare v_suspended integer; v_closed integer;
 begin
   -- Live sessions: unchanged 30-minute idle suspension.
@@ -120,7 +123,7 @@ comment on function suspend_inactive_rooms() is
 create or replace function create_submission(
   p_id uuid, p_public_id text, p_session_id uuid, p_type submission_type,
   p_text text, p_media_url text, p_anonymous boolean, p_display_name text, p_zone_id text
-) returns uuid language plpgsql security definer set search_path = public as $$
+) returns uuid language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype; v_board boards%rowtype;
   v_mode text; v_status submission_status; v_last timestamptz;
@@ -215,7 +218,7 @@ grant execute on function create_submission(uuid, text, uuid, submission_type, t
 -- optimistic retry cannot double-count participants) except for the deadline
 -- check marked below.
 create or replace function join_room(p_public_id text, p_display_name text, p_session_id uuid)
-returns uuid language plpgsql security definer set search_path = public as $$
+returns uuid language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype;
   v_inserted boolean := false;
@@ -279,7 +282,7 @@ create index if not exists submissions_author_idx on submissions (author_profile
 do $$
 begin
   if not exists (
-    select 1 from pg_constraint where conname = 'submissions_author_ck'
+    select 1 from pg_constraint where conname = 'submissions_author_ck' and conrelid = 'board.submissions'::regclass
   ) then
     alter table submissions add constraint submissions_author_ck
       check (participant_session_id is not null or author_profile_id is not null);
@@ -329,7 +332,7 @@ create index if not exists submission_comments_room_idx on submission_comments (
 -- Same one-author rule as submissions.
 do $$
 begin
-  if not exists (select 1 from pg_constraint where conname = 'submission_comments_author_ck') then
+  if not exists (select 1 from pg_constraint where conname = 'submission_comments_author_ck' and conrelid = 'board.submission_comments'::regclass) then
     alter table submission_comments add constraint submission_comments_author_ck
       check (participant_session_id is not null or author_profile_id is not null);
   end if;
@@ -370,7 +373,7 @@ create policy comments_public_read on submission_comments
 create or replace function create_comment(
   p_id uuid, p_public_id text, p_session_id uuid, p_submission_id uuid,
   p_body text, p_anonymous boolean, p_display_name text
-) returns uuid language plpgsql security definer set search_path = public as $$
+) returns uuid language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype; v_board boards%rowtype; v_sub submissions%rowtype;
   v_part jsonb; v_last timestamptz;
@@ -439,9 +442,9 @@ do $$
 begin
   if not exists (
     select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'submission_comments'
+    where pubname = 'supabase_realtime' and schemaname = 'board' and tablename = 'submission_comments'
   ) then
-    alter publication supabase_realtime add table public.submission_comments;
+    alter publication supabase_realtime add table board.submission_comments;
   end if;
 end $$;
 
@@ -461,7 +464,7 @@ alter table submission_comments replica identity full;
 -- ============================================================================
 
 create or replace function delete_own_submission(p_id uuid, p_public_id text, p_session_id uuid)
-returns boolean language plpgsql security definer set search_path = public as $$
+returns boolean language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype; v_board boards%rowtype; v_sub submissions%rowtype;
   v_part jsonb;

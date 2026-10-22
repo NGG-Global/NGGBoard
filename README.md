@@ -139,54 +139,46 @@ src/lib/data/realtime.ts        ← BroadcastChannel realtime bus
 
 ## Hooking up Supabase for realtime
 
-> **Status for the connected project (`ljrnmcpnbduuzjjnmdpw`):** the client,
-> the cache-backed realtime adapter (`src/lib/data/supabase-db.ts`), the backend
-> selector, and real Supabase Auth are all implemented and wired. `.env.local`
-> points at the project with `NEXT_PUBLIC_DATA_BACKEND=supabase`. Verified live:
-> the schema/RLS/`public_board_view` are in place, anonymous REST reads work
-> from the browser, and the Realtime channel subscribes. **Remaining actions
-> (yours):**
-> 1. Run `supabase/migrations/0004_client_ids.sql` — **required**; the
->    participant-write RPCs the adapter calls (`join_room`/`create_submission`
->    with client-generated ids) don't exist until you do.
-> 2. Run `supabase/migrations/0005_auth_bootstrap.sql` — so a signup is
->    auto-provisioned with an organization + profile.
-> 3. Confirm `submissions` and `live_rooms` are in the `supabase_realtime`
->    publication (step 2 below).
-> 4. Email confirmation is currently **on**, so a new signup must confirm its
->    email before first login (or enable auto-confirm under Auth → settings for
->    smoother onboarding). This is why the authenticated facilitator flow can't
->    be exercised headlessly and needs a real confirmed user.
-> 5. Run `supabase/migrations/0010_open_collection.sql` — **required**. It
->    carries three features in one file (open collection, opening content,
->    replies). Until it runs, `live_rooms.mode` doesn't exist, so the inactivity
->    sweep suspends an open board 30 minutes after its link goes out, and neither
->    opening content nor replies have anywhere to live.
+> **The shared NGG project.** NGG Boards no longer has a Supabase project of
+> its own: it shares one with the other NGG apps (quiz, simulations, auction),
+> and keeps every table, view, function and policy in the **`board` schema**
+> so nothing collides. The browser client is created with
+> `db: { schema: "board" }` and every Realtime subscription names the same
+> schema (`DB_SCHEMA` in `src/lib/supabase.ts`).
+>
+> The shared project also means one `auth.users` for every app: a colleague
+> signs in to the boards with the same account they use for the quiz and the
+> simulations. Board access still comes only from a `board.profiles` row, which
+> is created for @nggconsult.com accounts only.
+
+The one-off move from the old standalone project into the shared one (data,
+accounts, configuration) is the runbook in `ops/shared-supabase/README.md`.
 
 The app is architected so this is an isolated swap — screens don't change. The
 full step-by-step, for reference / a fresh project:
 
-### 1. Create the Supabase project & apply the schema
+### 1. Apply the schema
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run the migrations in order:
-   - `supabase/migrations/0001_init.sql` — tables, enums, indexes, triggers
-   - `supabase/migrations/0002_rls.sql` — row-level security, the
-     `public_board_view`, and the participant RPCs (`join_room`,
-     `create_submission`, `suspend_inactive_rooms`)
-   - `supabase/migrations/0003_storage.sql` — storage buckets + policies
+In the shared project's **SQL Editor**, run every file in
+`supabase/migrations` in order, starting with `0000_app_schema.sql` (it creates
+the `board` schema and its grants). Each later file starts with
+`set search_path to board;`, so its objects land in that schema. Then:
 
-### 2. Enable Realtime on the live tables
+- **Project Settings → Data API → Exposed schemas:** add `board`. Until you
+  do, every request fails with `Invalid schema: board`.
+- `0012_shared_project_profiles.sql` gives a profile to every @nggconsult.com
+  account that existed before the schema was installed.
 
-In **Database → Replication** (or **Realtime**), add these tables to the
-`supabase_realtime` publication:
+### 2. Realtime
 
-- `submissions` (new/updated content, approvals, hide/pin)
-- `live_rooms` (status, layout, focus, QR overlay, participant count)
+`0007_hardening.sql`, `0008_folders.sql` and `0010_open_collection.sql` add the
+live tables (`board.submissions`, `board.live_rooms`,
+`board.participant_sessions`, `board.boards`, `board.folders`,
+`board.submission_comments`) to the `supabase_realtime` publication. To check:
 
 ```sql
-alter publication supabase_realtime add table submissions;
-alter publication supabase_realtime add table live_rooms;
+select tablename from pg_publication_tables
+where pubname = 'supabase_realtime' and schemaname = 'board';
 ```
 
 Realtime respects RLS, so anonymous participants only receive the
@@ -195,17 +187,22 @@ Realtime respects RLS, so anonymous participants only receive the
 
 ### 3. Configure Auth
 
-- Enable **Email** (magic link or password) for organizational users under
-  **Authentication → Providers**. SSO can be added later.
-- Create a row in `profiles` for each user (id = their `auth.users` id), setting
-  `organization_id` and `role`. See `supabase/seed.sql` for the shape.
+Auth settings are shared by every app in the project:
+
+- **Authentication → URL Configuration → Redirect URLs** must include this
+  app's domain. Sign-up passes `emailRedirectTo` (the app's own origin), so the
+  confirmation link returns here rather than to the project's Site URL, which
+  belongs to whichever app was set up first.
+- New accounts get a profile from the `board_on_auth_user_created` trigger
+  (`0005`, `0011`); sign-up is limited to @nggconsult.com.
 - Keep participants anonymous — they never authenticate; they write through the
   `join_room` / `create_submission` RPCs (granted to the `anon` role).
 
 ### 4. Configure Storage
 
-- Buckets `board-assets` (logos/backgrounds) and `submissions` (participant
-  images) are created by `0003_storage.sql`, both public-read.
+- Buckets `board-assets` (logos/backgrounds) and `board-submissions`
+  (participant images) are created by `0003_storage.sql`, both public-read.
+  Bucket ids are project-wide, hence the `board-` prefix.
 - Path convention: `<organization_id>/<filename>`.
 - Enforce **image types only** (jpeg/png/webp/gif) and **≤ 8 MB** at upload time
   (already enforced client-side in `ImageUploadField`; add the same check in an

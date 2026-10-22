@@ -9,10 +9,13 @@
 -- Run AFTER 0002_rls.sql.
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 -- join_room now accepts the session id.
 create or replace function join_room(p_public_id text, p_display_name text, p_session_id uuid)
 returns uuid
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype;
   v_inserted boolean := false;
@@ -48,7 +51,7 @@ create or replace function create_submission(
   p_anonymous boolean,
   p_display_name text
 ) returns uuid
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype;
   v_board boards%rowtype;

@@ -3,7 +3,10 @@
 -- Postgres / Supabase. Mirrors src/lib/types.ts (snake_case columns).
 -- ============================================================================
 
-create extension if not exists "pgcrypto";
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---- enums -----------------------------------------------------------------
 create type user_role        as enum ('org_admin', 'board_creator', 'co_editor', 'facilitator');

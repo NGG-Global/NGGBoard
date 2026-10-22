@@ -12,15 +12,18 @@
 -- narrowly-scoped SELECT policy.
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 -- Helper: the organization of the current authenticated user.
 create or replace function current_org() returns uuid
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = board as $$
   select organization_id from profiles where id = auth.uid();
 $$;
 
 -- Helper: is the current user an admin of their org?
 create or replace function is_org_admin() returns boolean
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = board as $$
   select exists (select 1 from profiles where id = auth.uid() and role = 'org_admin');
 $$;
 
@@ -162,7 +165,7 @@ grant select on public_board_view to anon;
 -- Join a room by its public id; returns the new session id.
 create or replace function join_room(p_public_id text, p_display_name text)
 returns uuid
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype;
   v_session_id uuid;
@@ -197,7 +200,7 @@ create or replace function create_submission(
   p_anonymous boolean,
   p_display_name text
 ) returns uuid
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = board as $$
 declare
   v_room live_rooms%rowtype;
   v_board boards%rowtype;
@@ -247,7 +250,7 @@ grant execute on function create_submission(text, uuid, submission_type, text, t
 -- does not depend on any open browser tab).
 -- ============================================================================
 create or replace function suspend_inactive_rooms()
-returns integer language plpgsql security definer set search_path = public as $$
+returns integer language plpgsql security definer set search_path = board as $$
 declare v_count integer;
 begin
   with suspended as (

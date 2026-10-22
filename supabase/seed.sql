@@ -6,6 +6,9 @@
 -- API) and paste their UUIDs where indicated below.
 -- ============================================================================
 
+-- Shared NGG Supabase project: this app lives in the `board` schema (see 0000).
+set search_path to board;
+
 -- 1) Organization
 insert into organizations (id, name, logo_url)
 values ('00000000-0000-0000-0000-0000000000ng', 'נירם גיתן — NGG', '/brand/ngg-logo.png')
