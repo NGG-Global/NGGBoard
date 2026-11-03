@@ -11,6 +11,7 @@ import { QRCodeCanvas, LiveDot } from "@/components/ui";
 import { IconPause, IconLock, IconClock, IconCheck } from "@/components/ui/icons";
 import { DisplaySubmission, type FacilitatorCardActions } from "./DisplaySubmission";
 import { FIT_ATTR, HEADER_FACTOR, useFitDensity } from "./fit";
+import { ShownCardsProvider, useShownCards } from "./arrivals";
 import type { BoardZone } from "@/lib/types";
 
 /** When present, published cards gain on-board hover controls. */
@@ -125,6 +126,10 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
     boardZones(board).map((z) => `${z.id}:${z.title}:${z.subtitle}`).join(","),
   ].join("|");
   const density = useFitDensity(stage, rootRef, layoutKey);
+  // The cards this screen has already shown, so a card the layout rebuilds
+  // (a new post moving it to another row, the wall changing composition)
+  // doesn't replay its entrance. Replaying it blinked the whole wall.
+  const shownCards = useShownCards(ordered.map((s) => s.id));
   const gridColumns = `repeat(auto-fill, minmax(min(100%, ${viewer ? TRACK_MIN.viewer : TRACK_MIN.shared}), 1fr))`;
   const cardScale = projector ? baseScale : baseScale * 0.95;
   // Edge padding eases off with the header as the board fills up.
@@ -224,47 +229,49 @@ export function DisplayCanvas({ room, board, submissions, joinUrl, facilitator, 
             in the control room it is fitted (its `em` follows the fit density) and
             scrolls only past the legibility floor. Everything sent is reachable. */}
         <div {...(stage ? FIT_ATTR : {})} style={{ flex: 1, minHeight: 0, overflowY: viewer ? "visible" : "auto", overflowX: viewer ? "visible" : "hidden", fontSize: stage ? "calc(1em * var(--density, 1))" : undefined }}>
-          {ordered.length === 0 && !zoned ? (
-            <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
-          ) : zoned ? (
-            <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} projector={projector} viewer={viewer} renderFooter={renderFooter} />
-          ) : room.layout === "mosaic" ? (
-            <div style={{ columnWidth: viewer ? TRACK_MIN.viewer : TRACK_MIN.shared, columnGap: gap }}>
-              {ordered.map((s) => (
-                <div key={s.id} style={{ marginBottom: gap, breakInside: "avoid" }}>
-                  <DisplaySubmission submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
-                </div>
-              ))}
-            </div>
-          ) : room.layout === "feed" ? (
-            // A feed is one column by definition; on a wide screen it is capped and
-            // centered rather than stretched edge to edge. The cap ignores the fit
-            // density, so a full feed gets shorter, wider lines rather than a
-            // narrower column.
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap, maxWidth: viewer ? undefined : "calc(42em / var(--density, 1))", marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
-              {ordered.map((s) => (
-                <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
-              ))}
-            </div>
-          ) : projector ? (
-            <BalancedWall items={ordered} board={board} scale={cardScale} facFor={facFor} />
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: gridColumns,
-                gap,
-                gridAutoRows: "min-content",
-                alignContent: "start",
-              }}
-            >
-              {/* A large session in the control room gets the projector's compact
-                  cards, so one long answer doesn't make its whole row tall. */}
-              {ordered.map((s) => (
-                <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} hug={stage && ordered.length >= WRAP_FROM} dense={stage && ordered.length >= WRAP_FROM} />
-              ))}
-            </div>
-          )}
+          <ShownCardsProvider value={shownCards}>
+            {ordered.length === 0 && !zoned ? (
+              <EmptyDisplay joinUrl={joinUrl} roomCode={room.room_code} dark={v.dark} viewer={viewer} />
+            ) : zoned ? (
+              <ZonedContent zones={boardZones(board)} ordered={ordered} board={board} scale={baseScale} dark={v.dark} facFor={facFor} projector={projector} viewer={viewer} renderFooter={renderFooter} />
+            ) : room.layout === "mosaic" ? (
+              <div style={{ columnWidth: viewer ? TRACK_MIN.viewer : TRACK_MIN.shared, columnGap: gap }}>
+                {ordered.map((s) => (
+                  <div key={s.id} style={{ marginBottom: gap, breakInside: "avoid" }}>
+                    <DisplaySubmission submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+                  </div>
+                ))}
+              </div>
+            ) : room.layout === "feed" ? (
+              // A feed is one column by definition; on a wide screen it is capped and
+              // centered rather than stretched edge to edge. The cap ignores the fit
+              // density, so a full feed gets shorter, wider lines rather than a
+              // narrower column.
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap, maxWidth: viewer ? undefined : "calc(42em / var(--density, 1))", marginInline: viewer ? undefined : "auto", alignContent: "start" }}>
+                {ordered.map((s) => (
+                  <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} />
+                ))}
+              </div>
+            ) : projector ? (
+              <BalancedWall items={ordered} board={board} scale={cardScale} facFor={facFor} />
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: gridColumns,
+                  gap,
+                  gridAutoRows: "min-content",
+                  alignContent: "start",
+                }}
+              >
+                {/* A large session in the control room gets the projector's compact
+                    cards, so one long answer doesn't make its whole row tall. */}
+                {ordered.map((s) => (
+                  <DisplaySubmission key={s.id} submission={s} board={board} scale={cardScale} facilitator={facFor(s)} footer={renderFooter?.(s)} hug={stage && ordered.length >= WRAP_FROM} dense={stage && ordered.length >= WRAP_FROM} />
+                ))}
+              </div>
+            )}
+          </ShownCardsProvider>
         </div>
 
         {/* Org logo. The mark is a square emblem with its wordmark under it, so it
@@ -408,6 +415,9 @@ function BalancedWall({
     // minHeight rather than height: the composition centres itself on a
     // half-empty board, and can still grow past the screen — scrolled, not
     // truncated — if a session is too large for the fit to keep on one screen.
+    // A card that moves to another row is rebuilt (React can't move a
+    // component between parents); arrivals.ts keeps that from replaying its
+    // entrance, which made the wall blink on every new post.
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap }}>
       {rows.map((row, ri) => (
         <div key={ri} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap, minHeight: 0 }}>
