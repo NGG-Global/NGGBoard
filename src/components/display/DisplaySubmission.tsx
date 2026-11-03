@@ -2,12 +2,13 @@
 
 import type { Board, Submission } from "@/lib/types";
 import { useI18n } from "@/lib/i18n/react";
-import { initialFor } from "@/lib/utils";
+import { classNames, initialFor } from "@/lib/utils";
 import { isSeedImage, seedGradientFor } from "@/lib/board-visuals";
 import { isGiphyMediaUrl } from "@/lib/giphy";
 import { isFacilitatorPost } from "@/lib/posts";
 import { parseYouTubeVideoId, youTubeEmbedUrl, youTubeThumbnailUrl } from "@/lib/youtube";
 import { IconEyeOff, IconMonitor, IconPin, IconPlay, IconTrash } from "@/components/ui/icons";
+import { useCardEntrance } from "./arrivals";
 
 export interface FacilitatorCardActions {
   focused: boolean;
@@ -65,6 +66,9 @@ interface Props {
  */
 export function DisplaySubmission({ submission, board, scale, focus, facilitator, hug, dense, footer }: Props) {
   const { t } = useI18n();
+  // Fade in when the post arrives on the screen, not each time the wall's
+  // layout rebuilds the card (see arrivals.ts).
+  const entering = useCardEntrance(submission.id);
   // A facilitator's own post is always attributed to her: the board's
   // identity-hiding setting protects participants, and labelling the
   // facilitator's guidance "אנונימי" would read as a stray participant answer.
@@ -95,7 +99,7 @@ export function DisplaySubmission({ submission, board, scale, focus, facilitator
 
   return (
     <div
-      className={facilitator ? "ngg-card-in ngg-fac-card" : "ngg-card-in"}
+      className={classNames(entering && "ngg-card-in", facilitator && "ngg-fac-card") || undefined}
       style={{
         background: "#ffffff",
         borderRadius: "var(--radius-2xl)",
