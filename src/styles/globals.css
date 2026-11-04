@@ -145,6 +145,12 @@
   font-size: clamp(15px, min(1.05vw, 1.85vh), 34px);
   font-size: clamp(15px, min(1.05cqw, 1.85cqh), 34px);
 }
+/* A fitted region keeps the room for its scrollbar whether or not it shows
+   one. Where scrollbars take space (Windows), a scrollbar appearing made the
+   cards rewrap narrower, so the same density measured differently depending
+   on whether the last layout had one, and the fit flipped between two sizes.
+   Overlay scrollbars (macOS, phones) reserve nothing. */
+[data-fit] { scrollbar-gutter: stable; }
 
 /* Utility: hide scrollbars on projector display */
 .ngg-no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
