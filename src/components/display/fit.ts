@@ -111,8 +111,13 @@ export function useFitDensity(enabled: boolean, rootRef: RefObject<HTMLElement |
   useEffect(() => {
     const root = rootRef.current;
     if (!enabled || !root) return;
+    // Watch the frame the board sits in, not the board itself: the board's
+    // padding follows `--density`, so every fit resized it, the observer fired,
+    // and the board was fitted again. Wherever two densities each pushed the
+    // other (a Windows scrollbar coming and going is enough) that never
+    // stopped, and the shared screen jittered between them every frame.
     const ro = new ResizeObserver(() => remeasure());
-    ro.observe(root);
+    ro.observe(root.closest<HTMLElement>(".ngg-stage") ?? root);
     root.addEventListener("load", remeasure, true); // <img> load doesn't bubble; capture does
     let live = true;
     document.fonts?.ready.then(() => live && remeasure()).catch(() => {});
